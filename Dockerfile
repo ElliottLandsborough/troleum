@@ -12,6 +12,7 @@ COPY go.mod ./
 # Copy the rest of the source code
 COPY app/main.go /app/
 COPY app/storage.go /app/
+COPY app/web.go /app/
 
 RUN ls -alh /app
 

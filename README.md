@@ -6,6 +6,13 @@ make run
 make clean
 ```
 
+# Test
+
+```
+curl -v http://localhost:8080/saved-prices
+curl -v http://localhost:8080/saved-stations
+```
+
 # Random notes
 
 // url

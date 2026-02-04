@@ -182,6 +182,11 @@ func getRequestType(isStations bool) string {
 }
 
 func main() {
+	// Initialize saved pages from existing files
+	initializeSavedPages()
+
+	// Start web server for saved pages
+	setupWebServer()
 
 	// load the .env file manually
 	if err := loadDotEnv(".env"); err != nil {
@@ -295,7 +300,33 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 	}
 }
 
+func isFileRecentEnough(filePath string, maxAgeMinutes int) bool {
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		// File doesn't exist or can't be accessed
+		return false
+	}
+
+	maxAge := time.Duration(maxAgeMinutes) * time.Minute
+	return time.Since(fileInfo.ModTime()) < maxAge
+}
+
 func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+	// Check if file already exists and is recent enough (60 minutes for stations)
+	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
+	if isFileRecentEnough(filePath, 60) {
+		log.Printf("[STATIONS] Skipping page %d - file exists and is recent enough", pageNum)
+		// Need to check if this is the last page by reading the existing file
+		content, err := os.ReadFile(filePath)
+		if err == nil {
+			nodeIdCount := strings.Count(string(content), "node_id")
+			log.Printf("[STATIONS] Existing page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+			return nodeIdCount < 500
+		}
+		// If we can't read the file, assume it's not the last page to be safe
+		return false
+	}
+
 	log.Printf("[STATIONS] Fetching page %d", pageNum)
 
 	// Construct URL with current batch number
@@ -305,6 +336,8 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[STATIONS] Error making request for page %d: %v", pageNum, err)
+		resp.Body.Close()
+		globalRetryQueue.AddRequest(pageNum, true)
 		return false
 	}
 
@@ -320,6 +353,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 
 	if err != nil {
 		log.Printf("[STATIONS] Error reading response body for page %d: %v", pageNum, err)
+		globalRetryQueue.AddRequest(pageNum, true)
 		return false
 	}
 
@@ -328,7 +362,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
 	// Save the page
-	filePath, err := saveStationsPageJSON(string(body), pageNum)
+	filePath, err = saveStationsPageJSON(string(body), pageNum)
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -600,6 +634,21 @@ func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 }
 
 func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+	// Check if file already exists and is recent enough (15 minutes for prices)
+	filePath := filepath.Join("json", fmt.Sprintf("prices_page_%d.json", pageNum))
+	if isFileRecentEnough(filePath, 15) {
+		log.Printf("[PRICES] Skipping page %d - file exists and is recent enough", pageNum)
+		// Need to check if this is the last page by reading the existing file
+		content, err := os.ReadFile(filePath)
+		if err == nil {
+			nodeIdCount := strings.Count(string(content), "node_id")
+			log.Printf("[PRICES] Existing page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+			return nodeIdCount < 500
+		}
+		// If we can't read the file, assume it's not the last page to be safe
+		return false
+	}
+
 	log.Printf("[PRICES] Fetching page %d", pageNum)
 
 	// Construct URL with current batch number
@@ -609,6 +658,8 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[PRICES] Error making request for page %d: %v", pageNum, err)
+		resp.Body.Close()
+		globalRetryQueue.AddRequest(pageNum, false)
 		return false
 	}
 
@@ -624,6 +675,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 
 	if err != nil {
 		log.Printf("[PRICES] Error reading response body for page %d: %v", pageNum, err)
+		globalRetryQueue.AddRequest(pageNum, false)
 		return false
 	}
 
@@ -632,7 +684,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
 	// Save the page
-	filePath, err := savePricesPageJSON(string(body), pageNum)
+	filePath, err = savePricesPageJSON(string(body), pageNum)
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -686,6 +738,9 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 		log.Printf("[RETRY-STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
 
+	// Store the saved page datetime in a map
+	storeSavedPage(savedStationsPages, &savedPagesMutex, pageNum, filePath)
+
 	return true
 }
 
@@ -726,6 +781,9 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	} else {
 		log.Printf("[RETRY-PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
+
+	// Store the saved page datetime in a map
+	storeSavedPage(savedPricesPages, &savedPagesMutex, pageNum, filePath)
 
 	return true
 }
