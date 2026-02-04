@@ -11,8 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -93,13 +91,13 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
-			// Check if we need to wait for the hourly limit
+			// Check if we need to skip this cycle due to hourly limit
 			if !lastCycleCompleteTime.IsZero() {
 				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
 				if timeSinceLastCycle < time.Hour {
 					waitTime := time.Hour - timeSinceLastCycle
-					log.Printf("[STATIONS] Waiting %v before starting next cycle (hourly limit)", waitTime)
-					time.Sleep(waitTime)
+					log.Printf("[STATIONS] Skipping cycle, need to wait %v more (hourly limit)", waitTime)
+					continue // Skip this rate limiter tick
 				}
 			}
 
@@ -118,68 +116,6 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 			currentPage++
 		}
 	}
-}
-
-func findMaxPageNumber() int {
-	dir := "json"
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0
-	}
-
-	maxPage := 0
-	re := regexp.MustCompile(`\d+_page_(\d+)\.json$`)
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		matches := re.FindStringSubmatch(entry.Name())
-		if len(matches) > 1 {
-			pageNum, _ := strconv.Atoi(matches[1])
-			if pageNum > maxPage {
-				maxPage = pageNum
-			}
-		}
-	}
-
-	return maxPage
-}
-
-func findPagesToFetch(maxPage int) []int {
-	var pagesToFetch []int
-	dir := "json"
-
-	// Check existing pages for ones older than 5 minutes
-	entries, err := os.ReadDir(dir)
-	if err == nil {
-		re := regexp.MustCompile(`(\d+)_page_(\d+)\.json$`)
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-
-			matches := re.FindStringSubmatch(entry.Name())
-			if len(matches) > 2 {
-				timestamp, _ := strconv.ParseInt(matches[1], 10, 64)
-				pageNum, _ := strconv.Atoi(matches[2])
-
-				fileTime := time.Unix(timestamp, 0)
-				if time.Since(fileTime) > 5*time.Minute {
-					pagesToFetch = append(pagesToFetch, pageNum)
-				}
-			}
-		}
-	}
-
-	// If no old pages to refresh, try to fetch the next page
-	if len(pagesToFetch) == 0 && maxPage >= 0 {
-		pagesToFetch = append(pagesToFetch, maxPage+1)
-	}
-
-	return pagesToFetch
 }
 
 func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
@@ -458,13 +394,13 @@ func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
-			// Check if we need to wait for the 15-minute limit
+			// Check if we need to skip this cycle due to 15-minute limit
 			if !lastCycleCompleteTime.IsZero() {
 				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
 				if timeSinceLastCycle < 15*time.Minute {
 					waitTime := 15*time.Minute - timeSinceLastCycle
-					log.Printf("[PRICES] Waiting %v before starting next cycle (15-minute limit)", waitTime)
-					time.Sleep(waitTime)
+					log.Printf("[PRICES] Skipping cycle, need to wait %v more (15-minute limit)", waitTime)
+					continue // Skip this rate limiter tick
 				}
 			}
 
