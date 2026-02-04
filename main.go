@@ -65,8 +65,10 @@ func main() {
 		"fuelfinder.read",
 	)
 
-	// Create rate limiter (30 requests per minute = 1 request every 2 seconds)
-	rateLimiter := time.NewTicker(2 * time.Second)
+	// Create rate limiter (3 requests per minute = 1 request every 20 seconds)
+	rateLimiter := time.NewTicker(20 * time.Second)
+	// prod allows 6 requests per minute, so use:
+	// rateLimiter := time.NewTicker(10 * time.Second)
 	defer rateLimiter.Stop()
 
 	// Start continuous fetching in a goroutine
