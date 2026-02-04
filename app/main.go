@@ -138,6 +138,13 @@ var globalRetryQueue = &RetryQueue{
 	requests: make([]RetryRequest, 0),
 }
 
+// Global cycle completion tracking
+var (
+	lastStationsCycleComplete time.Time
+	lastPricesCycleComplete   time.Time
+	cycleTimeMutex            sync.RWMutex
+)
+
 func (rq *RetryQueue) AddRequest(pageNum int, isStations bool) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
@@ -215,14 +222,14 @@ func main() {
 	go continuousFetchPrices(client, rateLimiter)
 
 	// Start retry worker in a goroutine
-	go retryWorker(client)
+	go retryWorker(client, rateLimiter)
 
 	// Keep main running and allow for other code
 	log.Println("Started continuous data fetching...")
 	select {} // Block forever, allowing the goroutine to run
 }
 
-func retryWorker(client *OAuthClient) {
+func retryWorker(client *OAuthClient, rateLimiter *time.Ticker) {
 	for {
 		// Check for retry requests every 30 seconds
 		time.Sleep(30 * time.Second)
@@ -235,6 +242,46 @@ func retryWorker(client *OAuthClient) {
 		if !hasRequest {
 			continue
 		}
+
+		// Check time limits before processing retry
+		cycleTimeMutex.RLock()
+		var shouldWait bool
+		var waitTime time.Duration
+		var limitType string
+
+		if req.IsStations {
+			if !lastStationsCycleComplete.IsZero() {
+				timeSinceLastCycle := time.Since(lastStationsCycleComplete)
+				if timeSinceLastCycle < time.Hour {
+					shouldWait = true
+					waitTime = time.Hour - timeSinceLastCycle
+					limitType = "hourly"
+				}
+			}
+		} else {
+			if !lastPricesCycleComplete.IsZero() {
+				timeSinceLastCycle := time.Since(lastPricesCycleComplete)
+				if timeSinceLastCycle < 15*time.Minute {
+					shouldWait = true
+					waitTime = 15*time.Minute - timeSinceLastCycle
+					limitType = "15-minute"
+				}
+			}
+		}
+		cycleTimeMutex.RUnlock()
+
+		if shouldWait {
+			log.Printf("[RETRY] Postponing %s page %d retry, waiting %v for %s limit", getRequestType(req.IsStations), req.PageNum, waitTime, limitType)
+			// Re-queue the request for later
+			globalRetryQueue.mu.Lock()
+			globalRetryQueue.requests = append(globalRetryQueue.requests, req)
+			globalRetryQueue.mu.Unlock()
+			continue
+		}
+
+		// Wait for rate limiter before processing retry
+		log.Printf("[RETRY] Waiting for rate limiter before processing retry for %s page %d", getRequestType(req.IsStations), req.PageNum)
+		<-rateLimiter.C
 
 		log.Printf("[RETRY] Processing %s page %d (attempt %d)", getRequestType(req.IsStations), req.PageNum, req.AttemptCount)
 
@@ -265,21 +312,22 @@ func retryWorker(client *OAuthClient) {
 func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
-	var lastCycleCompleteTime time.Time
 
 	for {
-		// Wait for rate limiter
-		<-rateLimiter.C
-
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
 			// Check if we need to skip this cycle due to hourly limit
-			if !lastCycleCompleteTime.IsZero() {
-				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
+			cycleTimeMutex.RLock()
+			lastComplete := lastStationsCycleComplete
+			cycleTimeMutex.RUnlock()
+
+			if !lastComplete.IsZero() {
+				timeSinceLastCycle := time.Since(lastComplete)
 				if timeSinceLastCycle < time.Hour {
 					waitTime := time.Hour - timeSinceLastCycle
-					log.Printf("[STATIONS] Skipping cycle, need to wait %v more (hourly limit)", waitTime)
-					continue // Skip this rate limiter tick
+					log.Printf("[STATIONS] Skipping cycle, waiting %v for hourly limit", waitTime)
+					time.Sleep(waitTime)
+					continue
 				}
 			}
 
@@ -291,7 +339,12 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)
-			lastCycleCompleteTime = time.Now()
+			now := time.Now()
+
+			cycleTimeMutex.Lock()
+			lastStationsCycleComplete = now
+			cycleTimeMutex.Unlock()
+
 			log.Printf("[STATIONS] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
 		} else {
@@ -312,7 +365,7 @@ func isFileRecentEnough(filePath string, maxAgeMinutes int) bool {
 }
 
 func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
-	// Check if file already exists and is recent enough (60 minutes for stations)
+	// We only just cached this 60 minutes ago, so skip if within that time
 	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
 	if isFileRecentEnough(filePath, 60) {
 		log.Printf("[STATIONS] Skipping page %d - file exists and is recent enough", pageNum)
@@ -326,6 +379,10 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		// If we can't read the file, assume it's not the last page to be safe
 		return false
 	}
+
+	// Wait for rate limiter only when we're about to make an API call
+	log.Printf("[STATIONS] Waiting for rate limiter before fetching page %d", pageNum)
+	<-rateLimiter.C
 
 	log.Printf("[STATIONS] Fetching page %d", pageNum)
 
@@ -360,6 +417,12 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	// Check if this is the last page by counting 'node_id' occurrences
 	nodeIdCount := strings.Count(string(body), "node_id")
 	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	// If no node_id found, treat as last page
+	if nodeIdCount == 0 {
+		log.Printf("[STATIONS] Page %d contains no node_id occurrences, treating as last page", pageNum)
+		return true
+	}
 
 	// Save the page
 	filePath, err = saveStationsPageJSON(string(body), pageNum)
@@ -598,21 +661,22 @@ func saveStationsPageJSON(jsonString string, pageNumber int) (string, error) {
 func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
-	var lastCycleCompleteTime time.Time
 
 	for {
-		// Wait for rate limiter
-		<-rateLimiter.C
-
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
 			// Check if we need to skip this cycle due to 15-minute limit
-			if !lastCycleCompleteTime.IsZero() {
-				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
+			cycleTimeMutex.RLock()
+			lastComplete := lastPricesCycleComplete
+			cycleTimeMutex.RUnlock()
+
+			if !lastComplete.IsZero() {
+				timeSinceLastCycle := time.Since(lastComplete)
 				if timeSinceLastCycle < 15*time.Minute {
 					waitTime := 15*time.Minute - timeSinceLastCycle
-					log.Printf("[PRICES] Skipping cycle, need to wait %v more (15-minute limit)", waitTime)
-					continue // Skip this rate limiter tick
+					log.Printf("[PRICES] Skipping cycle, waiting %v for 15-minute limit", waitTime)
+					time.Sleep(waitTime)
+					continue
 				}
 			}
 
@@ -624,7 +688,12 @@ func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)
-			lastCycleCompleteTime = time.Now()
+			now := time.Now()
+
+			cycleTimeMutex.Lock()
+			lastPricesCycleComplete = now
+			cycleTimeMutex.Unlock()
+
 			log.Printf("[PRICES] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
 		} else {
@@ -634,9 +703,9 @@ func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 }
 
 func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
-	// Check if file already exists and is recent enough (15 minutes for prices)
+	// If we cached the price 5 minutes ago anyway, skip the cache refresh, worst case we lose 5mins of data
 	filePath := filepath.Join("json", fmt.Sprintf("prices_page_%d.json", pageNum))
-	if isFileRecentEnough(filePath, 15) {
+	if isFileRecentEnough(filePath, 5) {
 		log.Printf("[PRICES] Skipping page %d - file exists and is recent enough", pageNum)
 		// Need to check if this is the last page by reading the existing file
 		content, err := os.ReadFile(filePath)
@@ -648,6 +717,10 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		// If we can't read the file, assume it's not the last page to be safe
 		return false
 	}
+
+	// Wait for rate limiter only when we're about to make an API call
+	log.Printf("[PRICES] Waiting for rate limiter before fetching page %d", pageNum)
+	<-rateLimiter.C
 
 	log.Printf("[PRICES] Fetching page %d", pageNum)
 
@@ -682,6 +755,12 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	// Check if this is the last page by counting 'node_id' occurrences
 	nodeIdCount := strings.Count(string(body), "node_id")
 	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	// If no node_id found, treat as last page
+	if nodeIdCount == 0 {
+		log.Printf("[PRICES] Page %d contains no node_id occurrences, treating as last page", pageNum)
+		return true
+	}
 
 	// Save the page
 	filePath, err = savePricesPageJSON(string(body), pageNum)
