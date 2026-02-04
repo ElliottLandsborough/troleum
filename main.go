@@ -72,14 +72,17 @@ func main() {
 	defer rateLimiter.Stop()
 
 	// Start continuous fetching in a goroutine
-	go continuousFetch(client, rateLimiter)
+	go continuousFetchStations(client, rateLimiter)
+
+	// Start continuous fetching of prices in a goroutine
+	go continuousFetchPrices(client, rateLimiter)
 
 	// Keep main running and allow for other code
 	log.Println("Started continuous data fetching...")
 	select {} // Block forever, allowing the goroutine to run
 }
 
-func continuousFetch(client *OAuthClient, rateLimiter *time.Ticker) {
+func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
 	var lastCycleCompleteTime time.Time
@@ -95,21 +98,21 @@ func continuousFetch(client *OAuthClient, rateLimiter *time.Ticker) {
 				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
 				if timeSinceLastCycle < time.Hour {
 					waitTime := time.Hour - timeSinceLastCycle
-					log.Printf("Waiting %v before starting next cycle (hourly limit)", waitTime)
+					log.Printf("[STATIONS] Waiting %v before starting next cycle (hourly limit)", waitTime)
 					time.Sleep(waitTime)
 				}
 			}
 
 			cycleStartTime = time.Now()
-			log.Println("Starting new cycle from page 1")
+			log.Println("[STATIONS] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchPage(client, currentPage, rateLimiter)
+		isLastPage := fetchStationsPage(client, currentPage, rateLimiter)
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)
 			lastCycleCompleteTime = time.Now()
-			log.Printf("Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
+			log.Printf("[STATIONS] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
 		} else {
 			currentPage++
@@ -179,8 +182,8 @@ func findPagesToFetch(maxPage int) []int {
 	return pagesToFetch
 }
 
-func fetchPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
-	log.Printf("Fetching page %d", pageNum)
+func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+	log.Printf("[STATIONS] Fetching page %d", pageNum)
 
 	// Construct URL with current batch number
 	apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs?batch-number=%d", pageNum)
@@ -188,12 +191,12 @@ func fetchPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Error making request for page %d: %v", pageNum, err)
+		log.Printf("[STATIONS] Error making request for page %d: %v", pageNum, err)
 		return false
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("API returned status %d for page %d", resp.StatusCode, pageNum)
+		log.Printf("[STATIONS] API returned status %d for page %d", resp.StatusCode, pageNum)
 		resp.Body.Close()
 		return false
 	}
@@ -202,25 +205,25 @@ func fetchPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool 
 	resp.Body.Close()
 
 	if err != nil {
-		log.Printf("Error reading response body for page %d: %v", pageNum, err)
+		log.Printf("[STATIONS] Error reading response body for page %d: %v", pageNum, err)
 		return false
 	}
 
 	// Check if this is the last page by counting 'node_id' occurrences
 	nodeIdCount := strings.Count(string(body), "node_id")
-	log.Printf("Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
 	// Save the page
-	filePath, err := savePageJSON(string(body), pageNum)
+	filePath, err := saveStationsPageJSON(string(body), pageNum)
 	if err != nil {
-		log.Printf("Error saving JSON file for page %d: %v", pageNum, err)
+		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
-		log.Printf("Saved page %d to file: %s", pageNum, filepath.Base(filePath))
+		log.Printf("[STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
 
 	// Return true if this page has less than 500 node_ids (last page)
 	if nodeIdCount < 500 {
-		log.Printf("Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
+		log.Printf("[STATIONS] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
 		return true
 	}
 
@@ -420,9 +423,119 @@ func shouldCreateNewFile() bool {
 	return time.Since(latestTime) > time.Hour
 }
 
-func savePageJSON(jsonString string, pageNumber int) (string, error) {
+func saveStationsPageJSON(jsonString string, pageNumber int) (string, error) {
 	dir := "json"
 	filename := fmt.Sprintf("stations_page_%d.json", pageNumber)
+	fullPath := filepath.Join(dir, filename)
+
+	// Ensure directory exists
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	f, err := os.OpenFile(
+		fullPath,
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+		0600,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(jsonString)
+	return fullPath, nil
+}
+
+func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
+	currentPage := 1
+	var cycleStartTime time.Time
+	var lastCycleCompleteTime time.Time
+
+	for {
+		// Wait for rate limiter
+		<-rateLimiter.C
+
+		// Start timing when we begin a new cycle at page 1
+		if currentPage == 1 {
+			// Check if we need to wait for the 15-minute limit
+			if !lastCycleCompleteTime.IsZero() {
+				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
+				if timeSinceLastCycle < 15*time.Minute {
+					waitTime := 15*time.Minute - timeSinceLastCycle
+					log.Printf("[PRICES] Waiting %v before starting next cycle (15-minute limit)", waitTime)
+					time.Sleep(waitTime)
+				}
+			}
+
+			cycleStartTime = time.Now()
+			log.Println("[PRICES] Starting new cycle from page 1")
+		}
+
+		isLastPage := fetchPricesPage(client, currentPage, rateLimiter)
+
+		if isLastPage {
+			cycleDuration := time.Since(cycleStartTime)
+			lastCycleCompleteTime = time.Now()
+			log.Printf("[PRICES] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
+			currentPage = 1
+		} else {
+			currentPage++
+		}
+	}
+}
+
+func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+	log.Printf("[PRICES] Fetching page %d", pageNum)
+
+	// Construct URL with current batch number
+	apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs/fuel-prices?batch-number=%d", pageNum)
+	req, _ := http.NewRequest("GET", apiURL, nil)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[PRICES] Error making request for page %d: %v", pageNum, err)
+		return false
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[PRICES] API returned status %d for page %d", resp.StatusCode, pageNum)
+		resp.Body.Close()
+		return false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if err != nil {
+		log.Printf("[PRICES] Error reading response body for page %d: %v", pageNum, err)
+		return false
+	}
+
+	// Check if this is the last page by counting 'node_id' occurrences
+	nodeIdCount := strings.Count(string(body), "node_id")
+	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	// Save the page
+	filePath, err := savePricesPageJSON(string(body), pageNum)
+	if err != nil {
+		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
+	} else {
+		log.Printf("[PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
+	}
+
+	// Return true if this page has less than 500 node_ids (last page)
+	if nodeIdCount < 500 {
+		log.Printf("[PRICES] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
+		return true
+	}
+
+	return false
+}
+
+func savePricesPageJSON(jsonString string, pageNumber int) (string, error) {
+	dir := "json"
+	filename := fmt.Sprintf("prices_page_%d.json", pageNumber)
 	fullPath := filepath.Join(dir, filename)
 
 	// Ensure directory exists
