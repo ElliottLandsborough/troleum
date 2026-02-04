@@ -1,6 +1,7 @@
 # Howto
 
 ```
+source load_env.sh
 make run
 make clean
 ```

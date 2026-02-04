@@ -1,15 +1,19 @@
 # Use an official Go image as the builder
-FROM golang:pine AS builder
+FROM golang:1.25-alpine AS builder
 
 # Create app directory
 WORKDIR /app
 
 # Copy go.mod and go.sum first to cache dependencies
-COPY go.mod go.sum ./
-RUN go mod download
+#COPY go.mod go.sum ./
+COPY go.mod ./
+#RUN go mod download
 
 # Copy the rest of the source code
-COPY . .
+COPY app/main.go /app/
+COPY app/storage.go /app/
+
+RUN ls -alh /app
 
 # Build the binary
 RUN go build -o main .
