@@ -63,39 +63,50 @@ func main() {
 		"fuelfinder.read",
 	)
 
-	req, _ := http.NewRequest("GET", "https://www.fuel-finder.service.gov.uk/api/v1/pfs/fuel-prices?batch-number=1", nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
+	// Fetch all pages from the API
+	batchNumber := 1
+	for {
+		log.Printf("Fetching batch %d", batchNumber)
 
-	// Check if json files exist in '/json' directory, the names are timestamps,
-	// if the timestamp is older than 1 hour, create a new file
-	if resp.StatusCode == http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		// Construct URL with current batch number
+		apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs?batch-number=%d", batchNumber)
+		req, _ := http.NewRequest("GET", apiURL, nil)
 
-		if shouldCreateNewFile() {
-			filePath, err := saveJSONOnce(fmt.Sprintf("%s", body))
-			if err != nil {
-				log.Printf("Error saving JSON file: %v", err)
-			} else {
-				log.Printf("Created new JSON file: %s", filepath.Base(filePath))
-			}
-		} else {
-			log.Println("Recent JSON file exists, skipping creation")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error making request for batch %d: %v", batchNumber, err)
+			break
 		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("API returned status %d for batch %d, stopping", resp.StatusCode, batchNumber)
+			resp.Body.Close()
+			break
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if err != nil {
+			log.Printf("Error reading response body for batch %d: %v", batchNumber, err)
+			break
+		}
+
+		// Save every page regardless of content
+		filePath, err := savePageJSON(string(body), batchNumber)
+		if err != nil {
+			log.Printf("Error saving JSON file for batch %d: %v", batchNumber, err)
+		} else {
+			log.Printf("Saved batch %d to file: %s", batchNumber, filepath.Base(filePath))
+		}
+
+		batchNumber++
+
+		// Add a small delay between requests to be respectful to the API
+		time.Sleep(2 * time.Second)
 	}
 
-	// Get contents of latest json file
-	latestJSON, err := getLatestJSONFileContents()
-	if err != nil {
-		log.Printf("Error reading latest JSON file: %v", err)
-	} else {
-		log.Printf("Latest JSON file contents: %s", latestJSON)
-	}
-
-	fmt.Printf("Latest JSON file contents: %s\n", latestJSON)
+	log.Println("Finished fetching pages due to error")
 }
 
 func LoadConfig() Config {
@@ -147,7 +158,7 @@ func getLatestJSONFileContents() (string, error) {
 // Constructor
 func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient {
 	return &OAuthClient{
-		httpClient:   &http.Client{Timeout: 10 * time.Second},
+		httpClient:   &http.Client{Timeout: 60 * time.Second},
 		tokenURL:     tokenURL,
 		clientID:     clientID,
 		clientSecret: clientSecret,
@@ -163,6 +174,10 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
+
+	log.Println("Waiting for 3 seconds before next request...")
+	time.Sleep(3 * time.Second)
+
 	return c.httpClient.Do(req)
 }
 
@@ -288,6 +303,31 @@ func shouldCreateNewFile() bool {
 	// Check if latest file is older than 1 hour
 	latestTime := time.Unix(latestTimestamp, 0)
 	return time.Since(latestTime) > time.Hour
+}
+
+func savePageJSON(jsonString string, pageNumber int) (string, error) {
+	dir := "json"
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("page_%d_%d.json", pageNumber, timestamp)
+	fullPath := filepath.Join(dir, filename)
+
+	// Ensure directory exists
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	f, err := os.OpenFile(
+		fullPath,
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0600,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(jsonString)
+	return fullPath, nil
 }
 
 func saveJSONOnce(jsonString string) (string, error) {
