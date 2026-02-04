@@ -48,6 +48,18 @@ type Config struct {
 	Scope        string
 }
 
+type RetryRequest struct {
+	PageNum      int
+	IsStations   bool // true for stations, false for prices
+	LastAttempt  time.Time
+	AttemptCount int
+}
+
+type RetryQueue struct {
+	requests []RetryRequest
+	mu       sync.Mutex
+}
+
 // Price-related structs
 type FuelPrice struct {
 	FuelType         string `json:"fuel_type"`
@@ -121,6 +133,54 @@ type Station struct {
 	FuelTypes                   []string     `json:"fuel_types"`
 }
 
+// Global retry queue
+var globalRetryQueue = &RetryQueue{
+	requests: make([]RetryRequest, 0),
+}
+
+func (rq *RetryQueue) AddRequest(pageNum int, isStations bool) {
+	rq.mu.Lock()
+	defer rq.mu.Unlock()
+
+	retryReq := RetryRequest{
+		PageNum:      pageNum,
+		IsStations:   isStations,
+		LastAttempt:  time.Now(),
+		AttemptCount: 1,
+	}
+
+	rq.requests = append(rq.requests, retryReq)
+	log.Printf("[RETRY] Added %s page %d to retry queue", getRequestType(isStations), pageNum)
+}
+
+func (rq *RetryQueue) GetNextRequest() (RetryRequest, bool) {
+	rq.mu.Lock()
+	defer rq.mu.Unlock()
+
+	if len(rq.requests) == 0 {
+		return RetryRequest{}, false
+	}
+
+	// Get the first request and remove it from the queue
+	req := rq.requests[0]
+	rq.requests = rq.requests[1:]
+
+	return req, true
+}
+
+func (rq *RetryQueue) HasRequests() bool {
+	rq.mu.Lock()
+	defer rq.mu.Unlock()
+	return len(rq.requests) > 0
+}
+
+func getRequestType(isStations bool) string {
+	if isStations {
+		return "STATIONS"
+	}
+	return "PRICES"
+}
+
 func main() {
 
 	// load the .env file manually
@@ -149,9 +209,52 @@ func main() {
 	// Start continuous fetching of prices in a goroutine
 	go continuousFetchPrices(client, rateLimiter)
 
+	// Start retry worker in a goroutine
+	go retryWorker(client)
+
 	// Keep main running and allow for other code
 	log.Println("Started continuous data fetching...")
 	select {} // Block forever, allowing the goroutine to run
+}
+
+func retryWorker(client *OAuthClient) {
+	for {
+		// Check for retry requests every 30 seconds
+		time.Sleep(30 * time.Second)
+
+		if !globalRetryQueue.HasRequests() {
+			continue
+		}
+
+		req, hasRequest := globalRetryQueue.GetNextRequest()
+		if !hasRequest {
+			continue
+		}
+
+		log.Printf("[RETRY] Processing %s page %d (attempt %d)", getRequestType(req.IsStations), req.PageNum, req.AttemptCount)
+
+		var success bool
+		if req.IsStations {
+			success = retryFetchStationsPage(client, req.PageNum)
+		} else {
+			success = retryFetchPricesPage(client, req.PageNum)
+		}
+
+		if !success {
+			req.AttemptCount++
+			if req.AttemptCount <= 3 { // Max 3 retry attempts
+				req.LastAttempt = time.Now()
+				globalRetryQueue.mu.Lock()
+				globalRetryQueue.requests = append(globalRetryQueue.requests, req)
+				globalRetryQueue.mu.Unlock()
+				log.Printf("[RETRY] Re-queued %s page %d for retry (attempt %d)", getRequestType(req.IsStations), req.PageNum, req.AttemptCount)
+			} else {
+				log.Printf("[RETRY] Giving up on %s page %d after %d attempts", getRequestType(req.IsStations), req.PageNum, req.AttemptCount)
+			}
+		} else {
+			log.Printf("[RETRY] Successfully processed %s page %d", getRequestType(req.IsStations), req.PageNum)
+		}
+	}
 }
 
 func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
@@ -208,6 +311,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[STATIONS] API returned status %d for page %d", resp.StatusCode, pageNum)
 		resp.Body.Close()
+		globalRetryQueue.AddRequest(pageNum, true)
 		return false
 	}
 
@@ -511,6 +615,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[PRICES] API returned status %d for page %d", resp.StatusCode, pageNum)
 		resp.Body.Close()
+		globalRetryQueue.AddRequest(pageNum, false)
 		return false
 	}
 
@@ -541,6 +646,88 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	}
 
 	return false
+}
+
+func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
+	log.Printf("[RETRY-STATIONS] Fetching page %d", pageNum)
+
+	// Construct URL with current batch number
+	apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs?batch-number=%d", pageNum)
+	req, _ := http.NewRequest("GET", apiURL, nil)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[RETRY-STATIONS] Error making request for page %d: %v", pageNum, err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[RETRY-STATIONS] API returned status %d for page %d", resp.StatusCode, pageNum)
+		return false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[RETRY-STATIONS] Error reading response body for page %d: %v", pageNum, err)
+		return false
+	}
+
+	// Check if this is the last page by counting 'node_id' occurrences
+	nodeIdCount := strings.Count(string(body), "node_id")
+	log.Printf("[RETRY-STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	// Save the page
+	filePath, err := saveStationsPageJSON(string(body), pageNum)
+	if err != nil {
+		log.Printf("[RETRY-STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
+		return false
+	} else {
+		log.Printf("[RETRY-STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
+	}
+
+	return true
+}
+
+func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
+	log.Printf("[RETRY-PRICES] Fetching page %d", pageNum)
+
+	// Construct URL with current batch number
+	apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs/fuel-prices?batch-number=%d", pageNum)
+	req, _ := http.NewRequest("GET", apiURL, nil)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[RETRY-PRICES] Error making request for page %d: %v", pageNum, err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[RETRY-PRICES] API returned status %d for page %d", resp.StatusCode, pageNum)
+		return false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[RETRY-PRICES] Error reading response body for page %d: %v", pageNum, err)
+		return false
+	}
+
+	// Check if this is the last page by counting 'node_id' occurrences
+	nodeIdCount := strings.Count(string(body), "node_id")
+	log.Printf("[RETRY-PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	// Save the page
+	filePath, err := savePricesPageJSON(string(body), pageNum)
+	if err != nil {
+		log.Printf("[RETRY-PRICES] Error saving JSON file for page %d: %v", pageNum, err)
+		return false
+	} else {
+		log.Printf("[RETRY-PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
+	}
+
+	return true
 }
 
 func savePricesPageJSON(jsonString string, pageNumber int) (string, error) {
