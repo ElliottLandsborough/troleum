@@ -82,6 +82,7 @@ func main() {
 func continuousFetch(client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
+	var lastCycleCompleteTime time.Time
 
 	for {
 		// Wait for rate limiter
@@ -89,6 +90,16 @@ func continuousFetch(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
+			// Check if we need to wait for the hourly limit
+			if !lastCycleCompleteTime.IsZero() {
+				timeSinceLastCycle := time.Since(lastCycleCompleteTime)
+				if timeSinceLastCycle < time.Hour {
+					waitTime := time.Hour - timeSinceLastCycle
+					log.Printf("Waiting %v before starting next cycle (hourly limit)", waitTime)
+					time.Sleep(waitTime)
+				}
+			}
+
 			cycleStartTime = time.Now()
 			log.Println("Starting new cycle from page 1")
 		}
@@ -97,6 +108,7 @@ func continuousFetch(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)
+			lastCycleCompleteTime = time.Now()
 			log.Printf("Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
 		} else {
@@ -410,7 +422,7 @@ func shouldCreateNewFile() bool {
 
 func savePageJSON(jsonString string, pageNumber int) (string, error) {
 	dir := "json"
-	filename := fmt.Sprintf("page_%d.json", pageNumber)
+	filename := fmt.Sprintf("stations_page_%d.json", pageNumber)
 	fullPath := filepath.Join(dir, filename)
 
 	// Ensure directory exists
