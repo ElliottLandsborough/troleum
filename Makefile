@@ -10,7 +10,7 @@ BINARY = main
 # Default target
 .PHONY: run
 run:
-	$(MAKE) build && docker run -v $(PWD)/json:/app/json -e OAUTH_CLIENT_ID -e OAUTH_CLIENT_SECRET $(IMAGE_NAME) --name $(CONTAINER_NAME)
+	$(MAKE) build && docker run -v $(PWD)/json:/app/json --name $(CONTAINER_NAME) -e OAUTH_CLIENT_ID -e OAUTH_CLIENT_SECRET $(IMAGE_NAME)
 
 # Build Docker image with caching
 .PHONY: build
