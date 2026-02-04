@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,50 +65,152 @@ func main() {
 		"fuelfinder.read",
 	)
 
-	// Fetch all pages from the API
-	batchNumber := 1
+	// Create rate limiter (30 requests per minute = 1 request every 2 seconds)
+	rateLimiter := time.NewTicker(2 * time.Second)
+	defer rateLimiter.Stop()
+
+	// Start continuous fetching in a goroutine
+	go continuousFetch(client, rateLimiter)
+
+	// Keep main running and allow for other code
+	log.Println("Started continuous data fetching...")
+	select {} // Block forever, allowing the goroutine to run
+}
+
+func continuousFetch(client *OAuthClient, rateLimiter *time.Ticker) {
+	currentPage := 1
+	var cycleStartTime time.Time
+
 	for {
-		log.Printf("Fetching batch %d", batchNumber)
+		// Wait for rate limiter
+		<-rateLimiter.C
 
-		// Construct URL with current batch number
-		apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs?batch-number=%d", batchNumber)
-		req, _ := http.NewRequest("GET", apiURL, nil)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("Error making request for batch %d: %v", batchNumber, err)
-			break
+		// Start timing when we begin a new cycle at page 1
+		if currentPage == 1 {
+			cycleStartTime = time.Now()
+			log.Println("Starting new cycle from page 1")
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("API returned status %d for batch %d, stopping", resp.StatusCode, batchNumber)
-			resp.Body.Close()
-			break
-		}
+		isLastPage := fetchPage(client, currentPage, rateLimiter)
 
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if err != nil {
-			log.Printf("Error reading response body for batch %d: %v", batchNumber, err)
-			break
-		}
-
-		// Save every page regardless of content
-		filePath, err := savePageJSON(string(body), batchNumber)
-		if err != nil {
-			log.Printf("Error saving JSON file for batch %d: %v", batchNumber, err)
+		if isLastPage {
+			cycleDuration := time.Since(cycleStartTime)
+			log.Printf("Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
+			currentPage = 1
 		} else {
-			log.Printf("Saved batch %d to file: %s", batchNumber, filepath.Base(filePath))
+			currentPage++
 		}
+	}
+}
 
-		batchNumber++
-
-		// Add a small delay between requests to be respectful to the API
-		time.Sleep(2 * time.Second)
+func findMaxPageNumber() int {
+	dir := "json"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
 	}
 
-	log.Println("Finished fetching pages due to error")
+	maxPage := 0
+	re := regexp.MustCompile(`\d+_page_(\d+)\.json$`)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		matches := re.FindStringSubmatch(entry.Name())
+		if len(matches) > 1 {
+			pageNum, _ := strconv.Atoi(matches[1])
+			if pageNum > maxPage {
+				maxPage = pageNum
+			}
+		}
+	}
+
+	return maxPage
+}
+
+func findPagesToFetch(maxPage int) []int {
+	var pagesToFetch []int
+	dir := "json"
+
+	// Check existing pages for ones older than 5 minutes
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		re := regexp.MustCompile(`(\d+)_page_(\d+)\.json$`)
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			matches := re.FindStringSubmatch(entry.Name())
+			if len(matches) > 2 {
+				timestamp, _ := strconv.ParseInt(matches[1], 10, 64)
+				pageNum, _ := strconv.Atoi(matches[2])
+
+				fileTime := time.Unix(timestamp, 0)
+				if time.Since(fileTime) > 5*time.Minute {
+					pagesToFetch = append(pagesToFetch, pageNum)
+				}
+			}
+		}
+	}
+
+	// If no old pages to refresh, try to fetch the next page
+	if len(pagesToFetch) == 0 && maxPage >= 0 {
+		pagesToFetch = append(pagesToFetch, maxPage+1)
+	}
+
+	return pagesToFetch
+}
+
+func fetchPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+	log.Printf("Fetching page %d", pageNum)
+
+	// Construct URL with current batch number
+	apiURL := fmt.Sprintf("https://www.fuel-finder.service.gov.uk/api/v1/pfs?batch-number=%d", pageNum)
+	req, _ := http.NewRequest("GET", apiURL, nil)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error making request for page %d: %v", pageNum, err)
+		return false
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("API returned status %d for page %d", resp.StatusCode, pageNum)
+		resp.Body.Close()
+		return false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if err != nil {
+		log.Printf("Error reading response body for page %d: %v", pageNum, err)
+		return false
+	}
+
+	// Check if this is the last page by counting 'node_id' occurrences
+	nodeIdCount := strings.Count(string(body), "node_id")
+	log.Printf("Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	// Save the page
+	filePath, err := savePageJSON(string(body), pageNum)
+	if err != nil {
+		log.Printf("Error saving JSON file for page %d: %v", pageNum, err)
+	} else {
+		log.Printf("Saved page %d to file: %s", pageNum, filepath.Base(filePath))
+	}
+
+	// Return true if this page has less than 500 node_ids (last page)
+	if nodeIdCount < 500 {
+		log.Printf("Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
+		return true
+	}
+
+	return false
 }
 
 func LoadConfig() Config {
@@ -174,9 +278,6 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
-
-	log.Println("Waiting for 3 seconds before next request...")
-	time.Sleep(3 * time.Second)
 
 	return c.httpClient.Do(req)
 }
@@ -307,8 +408,7 @@ func shouldCreateNewFile() bool {
 
 func savePageJSON(jsonString string, pageNumber int) (string, error) {
 	dir := "json"
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("page_%d_%d.json", pageNumber, timestamp)
+	filename := fmt.Sprintf("page_%d.json", pageNumber)
 	fullPath := filepath.Join(dir, filename)
 
 	// Ensure directory exists
@@ -318,7 +418,7 @@ func savePageJSON(jsonString string, pageNumber int) (string, error) {
 
 	f, err := os.OpenFile(
 		fullPath,
-		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
 		0600,
 	)
 	if err != nil {
