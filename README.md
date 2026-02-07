@@ -1,10 +1,29 @@
 # Howto
 
+## Option 1: Manual Docker + Local Go
 ```
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=password postgres
+source load_env.sh
+make clean && make build && make run
+```
+
+## Option 2: Docker Compose (Recommended)
+```
+docker-compose up -d
+# To view logs:
+docker-compose logs -f app
+# To stop:
+docker-compose down
+```
+
+## Option 3: Development with existing database
+```
+# If you already have postgres running:
 source load_env.sh
 make run
-make clean
 ```
+
+user: postgres password: password
 
 # Test
 
@@ -77,6 +96,7 @@ Search results: Cache for 5 minutes (balance between freshness and performance)
 Use HTTP caching headers when available
 Implement cache invalidation strategies
 
+todo: currently the api key doesn't refresh after becoming invalid
 todo: data structure for cached_at dates.
 todo: data structure - map out the stations and prices in ram for super fast access, prune useless info.
 todo: google maps? or OSM?
