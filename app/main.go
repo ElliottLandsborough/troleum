@@ -62,9 +62,9 @@ type RetryQueue struct {
 
 // Price-related structs
 type FuelPrice struct {
-	FuelType         string `json:"fuel_type"`
-	Price            string `json:"price"`
-	PriceLastUpdated string `json:"price_last_updated"`
+	FuelType         string    `json:"fuel_type"`
+	Price            float64   `json:"price"`
+	PriceLastUpdated time.Time `json:"price_last_updated"`
 }
 
 type PriceStation struct {

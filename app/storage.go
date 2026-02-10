@@ -72,24 +72,32 @@ func enrichSavedPages() {
 		}
 
 		// unmarshal the raw response data into a PriceStationResponse structure
+		var priceStations []PriceStation
+
+		// First try to unmarshal as wrapped response (with "success" and "data" fields)
 		var priceResponse PriceStationResponse
 		err := json.Unmarshal(rawResponse.Data, &priceResponse)
 		if err != nil {
-			dataLen := len(jsonData)
-			preview := jsonData
-			if dataLen > 200 {
-				preview = jsonData[:200] + "..."
+			// If that fails, try to unmarshal as direct array
+			err = json.Unmarshal(rawResponse.Data, &priceStations)
+			if err != nil {
+				dataLen := len(jsonData)
+				preview := jsonData
+				if dataLen > 200 {
+					preview = jsonData[:200] + "..."
+				}
+				log.Printf("[ENRICH] Error unmarshalling price request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
+				continue
 			}
-			log.Printf("[ENRICH] Error unmarshalling price request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
-			//err.Error(jsonData.toString())
-			//log.Printf("ERROR")
-			//log.Printf("%s", jsonData)
-			os.Exit(1)
-			continue
+			log.Printf("[ENRICH] Successfully unmarshalled price data as direct array for page %d", pageNum)
+		} else {
+			// Successfully unmarshalled as wrapped response
+			priceStations = priceResponse.Data
+			log.Printf("[ENRICH] Successfully unmarshalled price data as wrapped response for page %d", pageNum)
 		}
 
 		// merge the price stations from this page into the global priceStations slice and index
-		mergePriceStations(priceResponse.Data)
+		mergePriceStations(priceStations)
 	}
 
 	stationRequests, err := GetFullDataForEnrichment(RequestTypeStationsPage, 100) // Get complete data for enrichment
@@ -116,20 +124,32 @@ func enrichSavedPages() {
 		}
 
 		// unmarshal the raw response data into a StationsResponse structure
+		var stations []Station
+
+		// First try to unmarshal as wrapped response (with "success" and "data" fields)
 		var stationResponse StationsResponse
 		err := json.Unmarshal(rawResponse.Data, &stationResponse)
 		if err != nil {
-			dataLen := len(jsonData)
-			preview := jsonData
-			if dataLen > 200 {
-				preview = jsonData[:200] + "..."
+			// If that fails, try to unmarshal as direct array
+			err = json.Unmarshal(rawResponse.Data, &stations)
+			if err != nil {
+				dataLen := len(jsonData)
+				preview := jsonData
+				if dataLen > 200 {
+					preview = jsonData[:200] + "..."
+				}
+				log.Printf("[ENRICH] Error unmarshalling station request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
+				continue
 			}
-			log.Printf("[ENRICH] Error unmarshalling station request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
-			continue
+			log.Printf("[ENRICH] Successfully unmarshalled station data as direct array for page %d", pageNum)
+		} else {
+			// Successfully unmarshalled as wrapped response
+			stations = stationResponse.Data
+			log.Printf("[ENRICH] Successfully unmarshalled station data as wrapped response for page %d", pageNum)
 		}
 
 		// merge the stations from this page into the global stations slice and index
-		mergeStations(stationResponse.Data)
+		mergeStations(stations)
 	}
 }
 
