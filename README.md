@@ -27,9 +27,31 @@ user: postgres password: password
 
 # Test
 
+## API Endpoints
+
+### Latest Successful Requests (one per page number):
 ```
-curl -v http://localhost:8080/saved-prices
-curl -v http://localhost:8080/saved-stations
+curl -v http://localhost:8080/saved-stations     # Latest successful station requests from DB
+curl -v http://localhost:8080/saved-prices       # Latest successful price requests from DB
+```
+
+### Most Recent Successful Requests (by timestamp):
+```
+curl -v http://localhost:8080/recent-stations     # Most recent 10 successful station requests
+curl -v http://localhost:8080/recent-stations?limit=20  # Most recent 20 successful station requests
+curl -v http://localhost:8080/recent-prices       # Most recent 10 successful price requests
+curl -v http://localhost:8080/recent-prices?limit=20    # Most recent 20 successful price requests
+```
+
+### Latest Page Data:
+```
+curl -v http://localhost:8080/latest-station-page # Most recent successful request for highest station page
+curl -v http://localhost:8080/latest-price-page   # Most recent successful request for highest price page
+```
+
+### Database Statistics:
+```
+curl -v http://localhost:8080/db-stats            # Database request statistics by type and status
 ```
 
 # Random notes

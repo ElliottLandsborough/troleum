@@ -86,7 +86,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	}
 
 	// Save the page
-	filePath, err = saveStationsPageJSON(string(body), pageNum)
+	filePath, err = savePageJSON(string(body), pageNum, "stations")
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -99,6 +99,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		errorMessage = err.Error()
 	}
 	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	log.Printf("[STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than 500 node_ids (last page)
 	if nodeIdCount < 500 {
@@ -170,7 +171,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	}
 
 	// Save the page
-	filePath, err = savePricesPageJSON(string(body), pageNum)
+	filePath, err = savePageJSON(string(body), pageNum, "prices")
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -183,6 +184,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		errorMessage = err.Error()
 	}
 	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	log.Printf("[PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than 500 node_ids (last page)
 	if nodeIdCount < 500 {

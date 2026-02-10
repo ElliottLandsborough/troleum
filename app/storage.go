@@ -48,54 +48,40 @@ func storeSavedPage(pageMap map[int]string, mutex *sync.Mutex, pageNum int, file
 
 // List the current json files, if they exist, into the savedStationsPages and savedPricesPages maps
 func initializeSavedPages() {
-	for pageNum := 1; ; pageNum++ {
-		filePath := getStationsPageFilePath(pageNum)
-		if fileExists(filePath) {
-			/*
-				// get the contents of the file and unmarshal to get stations
-				stationsFromFile, err := readStationsFromFile(filePath)
-				if err != nil {
-					log.Printf("Error reading stations from file %s: %v", filePath, err)
-				} else {
-					// Merge the stations into the global stations slice
-					stationsMutex.Lock()
-					// todo: skip merge for now
-					mergeStations(stationsFromFile)
-					stationsMutex.Unlock()
-					log.Printf("Loaded %d stations from %s", len(stationsFromFile), filePath)
-
-					// set the timestamp that the request was made
-					storeSavedPage(savedStationsPages, &savedPagesMutex, pageNum, filePath)
-				}
-			*/
-		} else {
-			break
-		}
+	priceRequests, err := GetMostRecentSuccessfulRequests(RequestTypePricesPage, 100) // Populate savedPricesPages
+	if err != nil {
+		log.Printf("Error getting most recent successful price requests: %v", err)
 	}
 
-	for pageNum := 1; ; pageNum++ {
-		filePath := getPricesPageFilePath(pageNum)
-		if fileExists(filePath) {
-			/*
-				// get the contents of the file and unmarshal to get prices
-				priceStationsFromFile, err := readPricesStationsFromFile(filePath)
-				if err != nil {
-					log.Printf("Error reading prices from file %s: %v", filePath, err)
-				} else {
-					// Merge the price stations into the global priceStations slice
-					priceStationsMutex.Lock()
-					// todo: skip merge for now
-					mergePriceStations(priceStationsFromFile)
-					priceStationsMutex.Unlock()
-					log.Printf("Loaded %d price stations from %s", len(priceStationsFromFile), filePath)
+	// loop through the results and populate savedPricesPages with page number and created_at timestamp
+	for _, req := range priceRequests {
+		pageNum := req.PageNumber
+		createdAt := req.CreatedAt
+		savedPricesPages[pageNum] = createdAt.String()
+		json := req.Data
+		log.Printf("Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), json)
 
-					// set the timestamp that the request was made
-					storeSavedPage(savedPricesPages, &savedPagesMutex, pageNum, filePath)
-				}
-			*/
-		} else {
-			break
-		}
+		// unmarshal the prices request data from json into the globally available priceStations slice and index
+		//var response PriceStationResponse
+		//if err := json.Unmarshal([]byte(json), &response); err != nil {
+		//	log.Printf("Error unmarshalling price request data for page %d: %v", pageNum, err)
+		//	continue
+		//}
+		//mergePriceStations(response.Data)
+	}
+
+	stationRequests, err := GetMostRecentSuccessfulRequests(RequestTypeStationsPage, 100) // Populate savedStationsPages
+	if err != nil {
+		log.Printf("Error getting most recent successful station requests: %v", err)
+	}
+
+	// loop through the results and populate savedStationsPages with page number and created_at timestamp
+	for _, req := range stationRequests {
+		pageNum := req.PageNumber
+		createdAt := req.CreatedAt
+		savedStationsPages[pageNum] = createdAt.String()
+		json := req.Data
+		log.Printf("Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), json)
 	}
 }
 
@@ -393,6 +379,120 @@ func GetRequestStats() (map[string]interface{}, error) {
 	}
 
 	return stats, nil
+}
+
+// GetMostRecentSuccessfulRequests returns the most recent successful (status 200) requests, ordered by timestamp
+func GetMostRecentSuccessfulRequests(requestType RequestType, limit int) ([]RequestLog, error) {
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	query := `
+		SELECT 
+			id, request_type, page_number, status_code, 
+			substring(data from 1 for 200) as data_preview, 
+			created_at, error_message
+		FROM (
+			SELECT 
+				id, request_type, page_number, status_code, 
+				data, created_at, error_message,
+				ROW_NUMBER() OVER (PARTITION BY page_number ORDER BY created_at DESC) as rn
+			FROM request_logs 
+			WHERE request_type = $1 AND status_code = 200
+		) ranked
+		WHERE rn = 1
+		ORDER BY created_at DESC
+		LIMIT $2
+	`
+
+	rows, err := db.Query(query, string(requestType), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query most recent successful requests: %v", err)
+	}
+	defer rows.Close()
+
+	var results []RequestLog
+	for rows.Next() {
+		var log RequestLog
+		var dataPreview string
+		err := rows.Scan(&log.ID, &log.RequestType, &log.PageNumber,
+			&log.StatusCode, &dataPreview, &log.CreatedAt, &log.ErrorMessage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan request log: %v", err)
+		}
+		log.Data = dataPreview
+		results = append(results, log)
+	}
+
+	return results, nil
+}
+
+// GetHighestSuccessfulPageNumber returns the highest page number that has a successful request
+func GetHighestSuccessfulPageNumber(requestType RequestType) (int, error) {
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	if db == nil {
+		return 0, fmt.Errorf("database not initialized")
+	}
+
+	query := `
+		SELECT COALESCE(MAX(page_number), 0) 
+		FROM request_logs 
+		WHERE request_type = $1 AND status_code = 200
+	`
+
+	var maxPage int
+	err := db.QueryRow(query, string(requestType)).Scan(&maxPage)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query highest successful page: %v", err)
+	}
+
+	return maxPage, nil
+}
+
+// GetMostRecentSuccessfulPage returns the most recent successful request for the highest available page
+func GetMostRecentSuccessfulPage(requestType RequestType) (*RequestLog, error) {
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	// First get the highest page number
+	maxPage, err := GetHighestSuccessfulPageNumber(requestType)
+	if err != nil {
+		return nil, err
+	}
+
+	if maxPage == 0 {
+		return nil, fmt.Errorf("no successful requests found for request type: %s", requestType)
+	}
+
+	// Then get the most recent successful request for that page
+	query := `
+		SELECT 
+			id, request_type, page_number, status_code, 
+			data, created_at, error_message
+		FROM request_logs 
+		WHERE request_type = $1 AND page_number = $2 AND status_code = 200
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var log RequestLog
+	err = db.QueryRow(query, string(requestType), maxPage).Scan(
+		&log.ID, &log.RequestType, &log.PageNumber,
+		&log.StatusCode, &log.Data, &log.CreatedAt, &log.ErrorMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query most recent successful page: %v", err)
+	}
+
+	return &log, nil
 }
 
 // getEnvWithDefault returns environment variable value or default if not set

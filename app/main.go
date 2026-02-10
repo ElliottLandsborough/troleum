@@ -562,9 +562,9 @@ func shouldCreateNewFile() bool {
 	return time.Since(latestTime) > time.Hour
 }
 
-func saveStationsPageJSON(jsonString string, pageNumber int) (string, error) {
+func savePageJSON(jsonString string, pageNumber int, logName string) (string, error) {
 	dir := "json"
-	filename := fmt.Sprintf("stations_page_%d.json", pageNumber)
+	filename := fmt.Sprintf("%s_page_%d.json", logName, pageNumber)
 	fullPath := filepath.Join(dir, filename)
 
 	// Ensure directory exists
@@ -660,13 +660,21 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 	log.Printf("[RETRY-STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
 	// Save the page
-	filePath, err := saveStationsPageJSON(string(body), pageNum)
+	filePath, err := savePageJSON(string(body), pageNum, "stations")
 	if err != nil {
 		log.Printf("[RETRY-STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 		return false
 	} else {
 		log.Printf("[RETRY-STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
+
+	// Save request to database regardless of success/failure
+	var errorMessage string
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	log.Printf("[RETRY-STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Store the saved page datetime in a map
 	storeSavedPage(savedStationsPages, &savedPagesMutex, pageNum, filePath)
@@ -704,7 +712,7 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	log.Printf("[RETRY-PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
 	// Save the page
-	filePath, err := savePricesPageJSON(string(body), pageNum)
+	filePath, err := savePageJSON(string(body), pageNum, "prices")
 	if err != nil {
 		log.Printf("[RETRY-PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 		return false
@@ -712,34 +720,18 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 		log.Printf("[RETRY-PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
 
+	// Save request to database regardless of success/failure
+	var errorMessage string
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	log.Printf("[RETRY-PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
+
 	// Store the saved page datetime in a map
 	storeSavedPage(savedPricesPages, &savedPagesMutex, pageNum, filePath)
 
 	return true
-}
-
-func savePricesPageJSON(jsonString string, pageNumber int) (string, error) {
-	dir := "json"
-	filename := fmt.Sprintf("prices_page_%d.json", pageNumber)
-	fullPath := filepath.Join(dir, filename)
-
-	// Ensure directory exists
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-
-	f, err := os.OpenFile(
-		fullPath,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		0600,
-	)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(jsonString)
-	return fullPath, nil
 }
 
 func saveJSONOnce(jsonString string) (string, error) {
