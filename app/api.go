@@ -55,7 +55,6 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[STATIONS] Error making request for page %d: %v", pageNum, err)
-		resp.Body.Close()
 		globalRetryQueue.AddRequest(pageNum, true)
 		return false
 	}
@@ -140,7 +139,6 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[PRICES] Error making request for page %d: %v", pageNum, err)
-		resp.Body.Close()
 		globalRetryQueue.AddRequest(pageNum, false)
 		return false
 	}
