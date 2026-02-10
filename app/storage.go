@@ -47,32 +47,54 @@ func storeSavedPage(pageMap map[int]string, mutex *sync.Mutex, pageNum int, file
 }
 
 // List the current json files, if they exist, into the savedStationsPages and savedPricesPages maps
-func initializeSavedPages() {
-	priceRequests, err := GetMostRecentSuccessfulRequests(RequestTypePricesPage, 100) // Populate savedPricesPages
+func enrichSavedPages() {
+	priceResponses, err := GetFullDataForEnrichment(RequestTypePricesPage, 100) // Get complete data for enrichment
 	if err != nil {
-		log.Printf("Error getting most recent successful price requests: %v", err)
+		log.Printf("[ENRICH] Error getting full price data for enrichment: %v", err)
 	}
 
 	// loop through the results and populate savedPricesPages with page number and created_at timestamp
-	for _, req := range priceRequests {
+	for _, req := range priceResponses {
 		pageNum := req.PageNumber
 		createdAt := req.CreatedAt
 		savedPricesPages[pageNum] = createdAt.String()
-		json := req.Data
-		log.Printf("Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), json)
+		jsonData := req.Data
+		//log.Printf("[ENRICH] Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), jsonData)
 
-		// unmarshal the prices request data from json into the globally available priceStations slice and index
-		//var response PriceStationResponse
-		//if err := json.Unmarshal([]byte(json), &response); err != nil {
-		//	log.Printf("Error unmarshalling price request data for page %d: %v", pageNum, err)
-		//	continue
-		//}
-		//mergePriceStations(response.Data)
+		if jsonData == "" {
+			log.Printf("[ENRICH] No data found for page %d, skipping merge", pageNum)
+			continue
+		}
+
+		// Create a new RawPricesResponse with the JSON data and created_at timestamp
+		rawResponse := RawPricesResponse{
+			Data: json.RawMessage(jsonData),
+		}
+
+		// unmarshal the raw response data into a PriceStationResponse structure
+		var priceResponse PriceStationResponse
+		err := json.Unmarshal(rawResponse.Data, &priceResponse)
+		if err != nil {
+			dataLen := len(jsonData)
+			preview := jsonData
+			if dataLen > 200 {
+				preview = jsonData[:200] + "..."
+			}
+			log.Printf("[ENRICH] Error unmarshalling price request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
+			//err.Error(jsonData.toString())
+			//log.Printf("ERROR")
+			//log.Printf("%s", jsonData)
+			os.Exit(1)
+			continue
+		}
+
+		// merge the price stations from this page into the global priceStations slice and index
+		mergePriceStations(priceResponse.Data)
 	}
 
-	stationRequests, err := GetMostRecentSuccessfulRequests(RequestTypeStationsPage, 100) // Populate savedStationsPages
+	stationRequests, err := GetFullDataForEnrichment(RequestTypeStationsPage, 100) // Get complete data for enrichment
 	if err != nil {
-		log.Printf("Error getting most recent successful station requests: %v", err)
+		log.Printf("[ENRICH] Error getting full station data for enrichment: %v", err)
 	}
 
 	// loop through the results and populate savedStationsPages with page number and created_at timestamp
@@ -80,8 +102,34 @@ func initializeSavedPages() {
 		pageNum := req.PageNumber
 		createdAt := req.CreatedAt
 		savedStationsPages[pageNum] = createdAt.String()
-		json := req.Data
-		log.Printf("Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), json)
+		jsonData := req.Data
+		//log.Printf("[ENRICH] Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), jsonData)
+
+		if jsonData == "" {
+			log.Printf("[ENRICH] No data found for page %d, skipping merge", pageNum)
+			continue
+		}
+
+		// Create a new RawStationsResponse with the JSON data and created_at timestamp
+		rawResponse := RawStationsResponse{
+			Data: json.RawMessage(jsonData),
+		}
+
+		// unmarshal the raw response data into a StationsResponse structure
+		var stationResponse StationsResponse
+		err := json.Unmarshal(rawResponse.Data, &stationResponse)
+		if err != nil {
+			dataLen := len(jsonData)
+			preview := jsonData
+			if dataLen > 200 {
+				preview = jsonData[:200] + "..."
+			}
+			log.Printf("[ENRICH] Error unmarshalling station request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
+			continue
+		}
+
+		// merge the stations from this page into the global stations slice and index
+		mergeStations(stationResponse.Data)
 	}
 }
 
@@ -379,6 +427,52 @@ func GetRequestStats() (map[string]interface{}, error) {
 	}
 
 	return stats, nil
+}
+
+// GetFullDataForEnrichment returns complete data (not truncated) for enrichment processing
+func GetFullDataForEnrichment(requestType RequestType, limit int) ([]RequestLog, error) {
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+
+	query := `
+		SELECT 
+			id, request_type, page_number, status_code, 
+			data, created_at, error_message
+		FROM (
+			SELECT 
+				id, request_type, page_number, status_code, 
+				data, created_at, error_message,
+				ROW_NUMBER() OVER (PARTITION BY page_number ORDER BY created_at DESC) as rn
+			FROM request_logs 
+			WHERE request_type = $1 AND status_code = 200
+		) ranked
+		WHERE rn = 1
+		ORDER BY created_at DESC
+		LIMIT $2
+	`
+
+	rows, err := db.Query(query, string(requestType), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query full data for enrichment: %v", err)
+	}
+	defer rows.Close()
+
+	var results []RequestLog
+	for rows.Next() {
+		var log RequestLog
+		err := rows.Scan(&log.ID, &log.RequestType, &log.PageNumber,
+			&log.StatusCode, &log.Data, &log.CreatedAt, &log.ErrorMessage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan request log: %v", err)
+		}
+		results = append(results, log)
+	}
+
+	return results, nil
 }
 
 // GetMostRecentSuccessfulRequests returns the most recent successful (status 200) requests, ordered by timestamp

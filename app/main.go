@@ -188,14 +188,29 @@ func getRequestType(isStations bool) string {
 	return "PRICES"
 }
 
+// todo:
+// 1. retry data could? be saved to the database, so if the app restarts we lose all retry attempts and just move on to the next page
+// 2. cached data from files is loaded but not saved to memory, the json files are separate from the db, and possibly useless. do we need the cached data in files at all? could we just save the raw response to the db and load from there for the enrich function? or is it useful to have the json files as a backup/cache?
+// 3. work out what order the data is saved and retreived in
 func main() {
 	// Initialize database connection
 	if err := InitDatabase(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// Initialize saved pages from existing files
-	initializeSavedPages()
+	// Start enriching saved pages on a 15-second timer
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		// Run enrichSavedPages immediately on startup
+		enrichSavedPages()
+
+		// Then run it every 15 seconds
+		for range ticker.C {
+			enrichSavedPages()
+		}
+	}()
 
 	// Start web server for saved pages
 	setupWebServer()

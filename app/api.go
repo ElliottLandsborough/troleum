@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -13,15 +14,15 @@ import (
 
 // RawStationsResponse represents the raw response from the API when fetching station data.
 type RawStationsResponse struct {
-	StatusCode bool
-	Data       string
+	StatusCode uint16
+	Data       json.RawMessage
 	CreatedAt  time.Time
 }
 
 // RawPricesResponse represents the raw response from the API when fetching price station data.
 type RawPricesResponse struct {
-	StatusCode bool
-	Data       string
+	StatusCode uint16
+	Data       json.RawMessage
 	CreatedAt  time.Time
 }
 
