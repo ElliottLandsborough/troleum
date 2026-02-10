@@ -89,11 +89,11 @@ func enrichSavedPages() {
 				log.Printf("[ENRICH] Error unmarshalling price request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
 				continue
 			}
-			log.Printf("[ENRICH] Successfully unmarshalled price data as direct array for page %d", pageNum)
+			//log.Printf("[ENRICH] Successfully unmarshalled price data as direct array for page %d", pageNum)
 		} else {
 			// Successfully unmarshalled as wrapped response
 			priceStations = priceResponse.Data
-			log.Printf("[ENRICH] Successfully unmarshalled price data as wrapped response for page %d", pageNum)
+			//log.Printf("[ENRICH] Successfully unmarshalled price data as wrapped response for page %d", pageNum)
 		}
 
 		// merge the price stations from this page into the global priceStations slice and index
@@ -141,11 +141,11 @@ func enrichSavedPages() {
 				log.Printf("[ENRICH] Error unmarshalling station request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
 				continue
 			}
-			log.Printf("[ENRICH] Successfully unmarshalled station data as direct array for page %d", pageNum)
+			//log.Printf("[ENRICH] Successfully unmarshalled station data as direct array for page %d", pageNum)
 		} else {
 			// Successfully unmarshalled as wrapped response
 			stations = stationResponse.Data
-			log.Printf("[ENRICH] Successfully unmarshalled station data as wrapped response for page %d", pageNum)
+			//log.Printf("[ENRICH] Successfully unmarshalled station data as wrapped response for page %d", pageNum)
 		}
 
 		// merge the stations from this page into the global stations slice and index
