@@ -77,14 +77,14 @@ type PriceStation struct {
 
 // Station-related structs
 type Location struct {
-	AddressLine1 string `json:"address_line_1"`
-	AddressLine2 string `json:"address_line_2"`
-	City         string `json:"city"`
-	Country      string `json:"country"`
-	County       string `json:"county"`
-	Postcode     string `json:"postcode"`
-	Latitude     string `json:"latitude"`
-	Longitude    string `json:"longitude"`
+	AddressLine1 string  `json:"address_line_1"`
+	AddressLine2 string  `json:"address_line_2"`
+	City         string  `json:"city"`
+	Country      string  `json:"country"`
+	County       string  `json:"county"`
+	Postcode     string  `json:"postcode"`
+	Latitude     float64 `json:"latitude"`
+	Longitude    float64 `json:"longitude"`
 }
 
 type DayHours struct {
@@ -189,7 +189,6 @@ func getRequestType(isStations bool) string {
 }
 
 // todo:
-// 1. retry data could? be saved to the database, so if the app restarts we lose all retry attempts and just move on to the next page
 // 2. cached data from files is loaded but not saved to memory, the json files are separate from the db, and possibly useless. do we need the cached data in files at all? could we just save the raw response to the db and load from there for the enrich function? or is it useful to have the json files as a backup/cache?
 // 3. work out what order the data is saved and retreived in
 func main() {

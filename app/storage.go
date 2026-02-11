@@ -14,6 +14,14 @@ import (
 	_ "github.com/lib/pq"
 )
 
+type LatLon struct {
+	Lat float64
+	Lon float64
+}
+
+// a map with the key node_id and the value LatLon
+var stationLocations = make(map[string]LatLon)
+
 // Up to 10,000 stations expected (~8000 in the uk)
 var stations = make([]Station, 0, 10000)
 var stationsIndex = make(map[string]int, 10000)
@@ -26,6 +34,7 @@ var priceStationsIndex = make(map[string]int, 10000)
 var savedStationsPages = make(map[int]string)
 var savedPricesPages = make(map[int]string)
 
+// Mutex for thread-safe access to savedStationsPages and savedPricesPages maps
 var savedPagesMutex sync.Mutex
 
 // Mutex for thread-safe access to stations slice and index
@@ -46,110 +55,118 @@ func storeSavedPage(pageMap map[int]string, mutex *sync.Mutex, pageNum int, file
 	}
 }
 
+// NodeIDEntity interface for entities that have a NodeID field
+type NodeIDEntity interface {
+	GetNodeID() string
+}
+
+// Implement NodeIDEntity interface for Station
+func (s Station) GetNodeID() string {
+	return s.NodeID
+}
+
+// Implement NodeIDEntity interface for PriceStation
+func (p PriceStation) GetNodeID() string {
+	return p.NodeID
+}
+
+// Generic JSON processing function that handles both wrapped and direct array formats
+func processJSONArray[T any](jsonData string, pageNum int, dataType string) ([]T, error) {
+	if jsonData == "" {
+		return nil, fmt.Errorf("no data found for page %d", pageNum)
+	}
+
+	rawMessage := json.RawMessage(jsonData)
+	var result []T
+
+	// First try to unmarshal as wrapped response (with "success" and "data" fields)
+	var wrappedResponse map[string]interface{}
+	err := json.Unmarshal(rawMessage, &wrappedResponse)
+	if err == nil {
+		if dataArray, ok := wrappedResponse["data"]; ok {
+			// Re-marshal the data array and unmarshal into our result
+			dataJSON, err := json.Marshal(dataArray)
+			if err == nil {
+				err = json.Unmarshal(dataJSON, &result)
+				if err == nil {
+					return result, nil
+				}
+			}
+		}
+	}
+
+	// If wrapped response fails, try to unmarshal as direct array
+	err = json.Unmarshal(rawMessage, &result)
+	if err != nil {
+		dataLen := len(jsonData)
+		preview := jsonData
+		if dataLen > 200 {
+			preview = jsonData[:200] + "..."
+		}
+		return nil, fmt.Errorf("error unmarshalling %s data for page %d: %v (data length: %d, preview: %s)",
+			dataType, pageNum, err, dataLen, preview)
+	}
+
+	return result, nil
+}
+
+// Generic merge function for entities with NodeID
+func mergeEntities[T NodeIDEntity](newEntities []T, globalSlice *[]T, globalIndex map[string]int, mutex *sync.Mutex) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	for _, entity := range newEntities {
+		nodeID := entity.GetNodeID()
+		if _, exists := globalIndex[nodeID]; !exists {
+			globalIndex[nodeID] = len(*globalSlice)
+			*globalSlice = append(*globalSlice, entity)
+		}
+	}
+}
+
 // List the current json files, if they exist, into the savedStationsPages and savedPricesPages maps
 func enrichSavedPages() {
-	priceResponses, err := GetFullDataForEnrichment(RequestTypePricesPage, 100) // Get complete data for enrichment
+	// Process price data
+	priceResponses, err := GetFullDataForEnrichment(RequestTypePricesPage, 100)
 	if err != nil {
 		log.Printf("[ENRICH] Error getting full price data for enrichment: %v", err)
 	}
 
-	// loop through the results and populate savedPricesPages with page number and created_at timestamp
 	for _, req := range priceResponses {
 		pageNum := req.PageNumber
 		createdAt := req.CreatedAt
 		savedPricesPages[pageNum] = createdAt.String()
-		jsonData := req.Data
-		//log.Printf("[ENRICH] Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), jsonData)
 
-		if jsonData == "" {
-			log.Printf("[ENRICH] No data found for page %d, skipping merge", pageNum)
+		priceStationsList, err := processJSONArray[PriceStation](req.Data, pageNum, "price")
+		if err != nil {
+			log.Printf("[ENRICH] %v", err)
 			continue
 		}
 
-		// Create a new RawPricesResponse with the JSON data and created_at timestamp
-		rawResponse := RawPricesResponse{
-			Data: json.RawMessage(jsonData),
-		}
-
-		// unmarshal the raw response data into a PriceStationResponse structure
-		var priceStations []PriceStation
-
-		// First try to unmarshal as wrapped response (with "success" and "data" fields)
-		var priceResponse PriceStationResponse
-		err := json.Unmarshal(rawResponse.Data, &priceResponse)
-		if err != nil {
-			// If that fails, try to unmarshal as direct array
-			err = json.Unmarshal(rawResponse.Data, &priceStations)
-			if err != nil {
-				dataLen := len(jsonData)
-				preview := jsonData
-				if dataLen > 200 {
-					preview = jsonData[:200] + "..."
-				}
-				log.Printf("[ENRICH] Error unmarshalling price request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
-				continue
-			}
-			//log.Printf("[ENRICH] Successfully unmarshalled price data as direct array for page %d", pageNum)
-		} else {
-			// Successfully unmarshalled as wrapped response
-			priceStations = priceResponse.Data
-			//log.Printf("[ENRICH] Successfully unmarshalled price data as wrapped response for page %d", pageNum)
-		}
-
-		// merge the price stations from this page into the global priceStations slice and index
-		mergePriceStations(priceStations)
+		mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
 	}
 
-	stationRequests, err := GetFullDataForEnrichment(RequestTypeStationsPage, 100) // Get complete data for enrichment
+	// Process station data
+	stationRequests, err := GetFullDataForEnrichment(RequestTypeStationsPage, 100)
 	if err != nil {
 		log.Printf("[ENRICH] Error getting full station data for enrichment: %v", err)
 	}
 
-	// loop through the results and populate savedStationsPages with page number and created_at timestamp
 	for _, req := range stationRequests {
 		pageNum := req.PageNumber
 		createdAt := req.CreatedAt
 		savedStationsPages[pageNum] = createdAt.String()
-		jsonData := req.Data
-		//log.Printf("[ENRICH] Page %d - Created At: %s - Data Preview: %s", pageNum, createdAt.String(), jsonData)
 
-		if jsonData == "" {
-			log.Printf("[ENRICH] No data found for page %d, skipping merge", pageNum)
+		stationList, err := processJSONArray[Station](req.Data, pageNum, "station")
+		if err != nil {
+			log.Printf("[ENRICH] %v", err)
 			continue
 		}
 
-		// Create a new RawStationsResponse with the JSON data and created_at timestamp
-		rawResponse := RawStationsResponse{
-			Data: json.RawMessage(jsonData),
-		}
+		mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
 
-		// unmarshal the raw response data into a StationsResponse structure
-		var stations []Station
-
-		// First try to unmarshal as wrapped response (with "success" and "data" fields)
-		var stationResponse StationsResponse
-		err := json.Unmarshal(rawResponse.Data, &stationResponse)
-		if err != nil {
-			// If that fails, try to unmarshal as direct array
-			err = json.Unmarshal(rawResponse.Data, &stations)
-			if err != nil {
-				dataLen := len(jsonData)
-				preview := jsonData
-				if dataLen > 200 {
-					preview = jsonData[:200] + "..."
-				}
-				log.Printf("[ENRICH] Error unmarshalling station request data for page %d: %v (data length: %d, preview: %s)", pageNum, err, dataLen, preview)
-				continue
-			}
-			//log.Printf("[ENRICH] Successfully unmarshalled station data as direct array for page %d", pageNum)
-		} else {
-			// Successfully unmarshalled as wrapped response
-			stations = stationResponse.Data
-			//log.Printf("[ENRICH] Successfully unmarshalled station data as wrapped response for page %d", pageNum)
-		}
-
-		// merge the stations from this page into the global stations slice and index
-		mergeStations(stations)
+		// an 'array' of stations with their lat lon locations only
+		mergeStationLocations(stationList)
 	}
 }
 
@@ -221,36 +238,6 @@ func readPricesStationsFromFile(filePath string) ([]PriceStation, error) {
 	return response.Data, nil
 }
 
-// Merges newStations into the global stations slice, avoiding duplicates based on NodeID
-func mergeStations(newStations []Station) {
-	for _, newStation := range newStations {
-		if _, exists := stationsIndex[newStation.NodeID]; !exists {
-			stationsIndex[newStation.NodeID] = len(stations)
-			stations = append(stations, newStation)
-		}
-	}
-
-	mergeStationLocations(newStations)
-}
-
-// Merges newPriceStations into the global priceStations slice, avoiding duplicates based on NodeID
-func mergePriceStations(newPriceStations []PriceStation) {
-	for _, newPriceStation := range newPriceStations {
-		if _, exists := priceStationsIndex[newPriceStation.NodeID]; !exists {
-			priceStationsIndex[newPriceStation.NodeID] = len(priceStations)
-			priceStations = append(priceStations, newPriceStation)
-		}
-	}
-}
-
-type LatLon struct {
-	Lat float64
-	Lon float64
-}
-
-// a map with the key node_id and the value LatLon
-var stationLocations = make(map[string]LatLon)
-
 // Database connection
 var db *sql.DB
 var dbMutex sync.Mutex
@@ -274,27 +261,65 @@ type RequestLog struct {
 	ErrorMessage string      `db:"error_message"`
 }
 
+// ProcessJSONFromAnywhere - public function to process JSON data from anywhere in the app
+func ProcessJSONFromAnywhere(jsonData string, dataType string) error {
+	switch strings.ToLower(dataType) {
+	case "stations", "station":
+		stationList, err := processJSONArray[Station](jsonData, 0, "station")
+		if err != nil {
+			return err
+		}
+		mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
+		mergeStationLocations(stationList)
+		return nil
+
+	case "prices", "price":
+		priceStationsList, err := processJSONArray[PriceStation](jsonData, 0, "price")
+		if err != nil {
+			return err
+		}
+		mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
+		mergeFuelPrices(priceStationsList)
+		return nil
+
+	default:
+		return fmt.Errorf("unknown data type: %s (supported: stations, prices)", dataType)
+	}
+}
+
 // Merges station locations from newStations into the stationLocations map
 func mergeStationLocations(newStations []Station) {
 	for _, newStation := range newStations {
 		if _, exists := stationLocations[newStation.NodeID]; !exists {
-			latitudeString := strings.TrimSpace(newStation.Location.Latitude)
-			longitudeString := strings.TrimSpace(newStation.Location.Longitude)
-			if latitudeString == "" || longitudeString == "" {
-				continue
-			}
-			latitude, _ := strconv.ParseFloat(latitudeString, 64)
-			longitude, _ := strconv.ParseFloat(longitudeString, 64)
-			if latitude == 0 || longitude == 0 {
-				continue
-			}
 			stationLocations[newStation.NodeID] = LatLon{
-				Lat: latitude,
-				Lon: longitude,
+				Lat: newStation.Location.Latitude,
+				Lon: newStation.Location.Longitude,
 			}
 		}
 	}
 }
+
+/*
+// Merges fuel prices from newPriceStations into the priceStations slice and index
+func mergeFuelPrices(newPriceStations []PriceStation) {
+	priceStationsMutex.Lock()
+	defer priceStationsMutex.Unlock()
+
+	for _, newPriceStation := range newPriceStations {
+		nodeID := newPriceStation.NodeID
+		if _, exists := priceStationsIndex[nodeID]; !exists {
+			priceStationsIndex[nodeID] = len(priceStations)
+			priceStations = append(priceStations, newPriceStation)
+		} else {
+			// If the station already exists, we can choose to update the price information if needed
+			existingIndex := priceStationsIndex[nodeID]
+			priceStations[existingIndex].DieselPrice = newPriceStation.DieselPrice
+			priceStations[existingIndex].Petrol95Price = newPriceStation.Petrol95Price
+			priceStations[existingIndex].Petrol98Price = newPriceStation.Petrol98Price
+		}
+	}
+}
+*/
 
 // InitDatabase initializes the database connection and creates necessary tables
 func InitDatabase() error {

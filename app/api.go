@@ -85,7 +85,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		return true
 	}
 
-	// Save the page
+	// Save the page to JSON file (for debug purposes, not used for enrichment)
 	filePath, err = savePageJSON(string(body), pageNum, "stations")
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
@@ -169,7 +169,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		return true
 	}
 
-	// Save the page
+	// Save the page to JSON file (for debug purposes, not used for enrichment)
 	filePath, err = savePageJSON(string(body), pageNum, "prices")
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
