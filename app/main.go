@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,15 +77,43 @@ type PriceStation struct {
 }
 
 // Station-related structs
+// FlexFloat is a custom type that can unmarshal from both string and float64
+type FlexFloat float64
+
+// UnmarshalJSON implements custom JSON unmarshaling for FlexFloat
+func (f *FlexFloat) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as a number first
+	var num float64
+	if err := json.Unmarshal(data, &num); err == nil {
+		*f = FlexFloat(num)
+		return nil
+	}
+
+	// If that fails, try to unmarshal as a string and convert
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+
+	// Convert string to float64
+	num, err := strconv.ParseFloat(str, 64)
+	if err != nil {
+		return fmt.Errorf("cannot convert %q to float64: %w", str, err)
+	}
+
+	*f = FlexFloat(num)
+	return nil
+}
+
 type Location struct {
-	AddressLine1 string  `json:"address_line_1"`
-	AddressLine2 string  `json:"address_line_2"`
-	City         string  `json:"city"`
-	Country      string  `json:"country"`
-	County       string  `json:"county"`
-	Postcode     string  `json:"postcode"`
-	Latitude     float64 `json:"latitude"`
-	Longitude    float64 `json:"longitude"`
+	AddressLine1 string    `json:"address_line_1"`
+	AddressLine2 string    `json:"address_line_2"`
+	City         string    `json:"city"`
+	Country      string    `json:"country"`
+	County       string    `json:"county"`
+	Postcode     string    `json:"postcode"`
+	Latitude     FlexFloat `json:"latitude"`
+	Longitude    FlexFloat `json:"longitude"`
 }
 
 type DayHours struct {

@@ -279,7 +279,7 @@ func ProcessJSONFromAnywhere(jsonData string, dataType string) error {
 			return err
 		}
 		mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
-		mergeFuelPrices(priceStationsList)
+		//mergeFuelPrices(priceStationsList)
 		return nil
 
 	default:
@@ -292,8 +292,8 @@ func mergeStationLocations(newStations []Station) {
 	for _, newStation := range newStations {
 		if _, exists := stationLocations[newStation.NodeID]; !exists {
 			stationLocations[newStation.NodeID] = LatLon{
-				Lat: newStation.Location.Latitude,
-				Lon: newStation.Location.Longitude,
+				Lat: float64(newStation.Location.Latitude),
+				Lon: float64(newStation.Location.Longitude),
 			}
 		}
 	}
