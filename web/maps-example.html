@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Maps - Multiple Points Example</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .info-window {
+            padding: 10px;
+            max-width: 200px;
+        }
+
+        .info-window h3 {
+            margin: 0 0 8px 0;
+            color: #1a73e8;
+            font-size: 16px;
+        }
+
+        .info-window p {
+            margin: 4px 0;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .info-window .description {
+            color: #666;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // Sample data: Array of locations with info
+        const locations = [
+            {
+                id: 1,
+                name: "Eiffel Tower",
+                lat: 48.8584,
+                lng: 2.2945,
+                city: "Paris, France",
+                description: "Iconic iron lattice tower on the Champ de Mars",
+                type: "landmark"
+            },
+            {
+                id: 2,
+                name: "Statue of Liberty",
+                lat: 40.6892,
+                lng: -74.0445,
+                city: "New York, USA",
+                description: "Colossal neoclassical sculpture on Liberty Island",
+                type: "landmark"
+            },
+            {
+                id: 3,
+                name: "Big Ben",
+                lat: 51.5007,
+                lng: -0.1246,
+                city: "London, UK",
+                description: "Great bell of the clock at the Palace of Westminster",
+                type: "landmark"
+            },
+            {
+                id: 4,
+                name: "Sydney Opera House",
+                lat: -33.8568,
+                lng: 151.2153,
+                city: "Sydney, Australia",
+                description: "Multi-venue performing arts centre",
+                type: "landmark"
+            },
+            {
+                id: 5,
+                name: "Taj Mahal",
+                lat: 27.1751,
+                lng: 78.0421,
+                city: "Agra, India",
+                description: "Ivory-white marble mausoleum",
+                type: "landmark"
+            },
+            {
+                id: 6,
+                name: "Christ the Redeemer",
+                lat: -22.9519,
+                lng: -43.2105,
+                city: "Rio de Janeiro, Brazil",
+                description: "Art Deco statue of Jesus Christ",
+                type: "landmark"
+            },
+            {
+                id: 7,
+                name: "Tokyo Tower",
+                lat: 35.6586,
+                lng: 139.7454,
+                city: "Tokyo, Japan",
+                description: "Communications and observation tower",
+                type: "landmark"
+            },
+            {
+                id: 8,
+                name: "Burj Khalifa",
+                lat: 25.1972,
+                lng: 55.2744,
+                city: "Dubai, UAE",
+                description: "World's tallest building",
+                type: "landmark"
+            }
+        ];
+
+        let map;
+        let markers = [];
+        let infoWindows = [];
+
+        function initMap() {
+            // Create map centered on the world
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 2,
+                center: { lat: 20, lng: 0 },
+                mapTypeControl: true,
+                streetViewControl: false
+            });
+
+            // Create bounds to fit all markers
+            const bounds = new google.maps.LatLngBounds();
+
+            // Add markers for each location
+            locations.forEach((location) => {
+                addMarker(location, bounds);
+            });
+
+            // Fit map to show all markers
+            map.fitBounds(bounds);
+        }
+
+        function addMarker(location, bounds) {
+            // Create marker
+            const marker = new google.maps.Marker({
+                position: { lat: location.lat, lng: location.lng },
+                map: map,
+                title: location.name,
+                animation: google.maps.Animation.DROP
+            });
+
+            // Create info window content
+            const infoContent = `
+                <div class="info-window">
+                    <h3>${location.name}</h3>
+                    <p><strong>${location.city}</strong></p>
+                    <p class="description">${location.description}</p>
+                </div>
+            `;
+
+            // Create info window
+            const infoWindow = new google.maps.InfoWindow({
+                content: infoContent
+            });
+
+            // Add click listener to marker
+            marker.addListener('click', function() {
+                // Close all other info windows
+                infoWindows.forEach(iw => iw.close());
+                
+                // Open this info window
+                infoWindow.open(map, marker);
+            });
+
+            // Extend bounds to include this marker
+            bounds.extend(marker.getPosition());
+
+            // Store references
+            markers.push(marker);
+            infoWindows.push(infoWindow);
+        }
+
+        // Helper function to add a new location dynamically
+        function addNewLocation(locationData) {
+            const bounds = new google.maps.LatLngBounds();
+            
+            // Extend bounds with existing markers
+            markers.forEach(marker => {
+                bounds.extend(marker.getPosition());
+            });
+
+            // Add new marker
+            addMarker(locationData, bounds);
+
+            // Fit map to show all markers
+            map.fitBounds(bounds);
+        }
+
+        // Helper function to clear all markers
+        function clearMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            infoWindows = [];
+        }
+
+        // Helper function to show/hide markers
+        function setMarkersVisible(visible) {
+            markers.forEach(marker => {
+                marker.setVisible(visible);
+            });
+        }
+
+        // Example: Add a location programmatically after map loads
+        // Uncomment to test:
+        /*
+        setTimeout(() => {
+            addNewLocation({
+                id: 9,
+                name: "Golden Gate Bridge",
+                lat: 37.8199,
+                lng: -122.4783,
+                city: "San Francisco, USA",
+                description: "Iconic suspension bridge",
+                type: "landmark"
+            });
+        }, 3000);
+        */
+
+    </script>
+
+    <!-- Load Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ&callback=initMap" async defer></script>
+</body>
+</html>
