@@ -62,7 +62,7 @@ logs:
 # View app logs only
 .PHONY: logs-app
 logs-app:
-	docker-compose logs -f app
+	docker logs -f petroleum_app
 
 # Stop all services
 .PHONY: stop
