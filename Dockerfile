@@ -16,8 +16,12 @@ COPY app/web.go /app/
 
 RUN ls -alh /app
 
-# Build the binary
-RUN go build -o main .
+# Build the binary (without debug optimizations)
+#RUN go build -o main .
+
+# Build the binary with production optimizations
+ENV CGO_ENABLED=0
+RUN go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
 FROM alpine:latest
