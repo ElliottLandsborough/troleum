@@ -2,9 +2,8 @@
 
 ## Option 1: Manual Docker + Local Go
 ```
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=password postgres
 source load_env.sh
-make clean && make build && make run
+make rebuildrun
 ```
 
 ## Option 2: Docker Compose (Recommended)
