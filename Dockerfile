@@ -25,16 +25,24 @@ RUN go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
 FROM alpine:latest
+
+# Create non-root user
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
+
 WORKDIR /app
 
 # Create json directory for data persistence
 RUN mkdir -p json
 
-# Copy the binary from the builder
-COPY --from=builder /app/main .
+# Copy binary and set permissions (read/execute only)
+COPY --from=builder --chown=appuser:appuser --chmod=555 /app/main .
 
-# Copy the static files (if any)
-COPY static ./static
+# Copy static/web files (read-only)
+COPY --chown=appuser:appuser --chmod=555 static ./static
+
+# Create json directory with write permissions for data persistence
+RUN mkdir -p json && chown appuser:appuser json && chmod 755 json
 
 # Run the binary
 CMD ["./main"]
