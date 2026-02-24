@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path"
 	"strconv"
+	"strings"
 )
 
 // Handler to return latest successful stations requests from database
@@ -122,22 +124,80 @@ func latestPricePageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Setup web server with routes for database endpoints
-func setupWebServer() {
-	// Original endpoints (latest for each page number)
-	http.HandleFunc("/saved-stations", savedStationsHandler)
-	http.HandleFunc("/saved-prices", savedPricesHandler)
-	http.HandleFunc("/db-stats", dbStatsHandler)
+// Handler to serve the root index page
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, "static/index.html")
+}
 
-	// New endpoints (most recent by timestamp)
-	http.HandleFunc("/recent-stations", recentStationsHandler)        // ?limit=20
-	http.HandleFunc("/recent-prices", recentPricesHandler)            // ?limit=20
-	http.HandleFunc("/latest-station-page", latestStationPageHandler) // Most recent successful page
-	http.HandleFunc("/latest-price-page", latestPricePageHandler)     // Most recent successful page
+func noStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func cacheAssets(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		// Extra safety: only cache specific extensions
+		ext := strings.ToLower(path.Ext(r.URL.Path))
+		switch ext {
+		case ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		default:
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func setupWebServer() {
+	mux := http.NewServeMux()
+
+	// ----------------------
+	// API routes (no caching)
+	// ----------------------
+	mux.Handle("/saved-stations", noStore(http.HandlerFunc(savedStationsHandler)))
+	mux.Handle("/saved-prices", noStore(http.HandlerFunc(savedPricesHandler)))
+	mux.Handle("/db-stats", noStore(http.HandlerFunc(dbStatsHandler)))
+
+	mux.Handle("/recent-stations", noStore(http.HandlerFunc(recentStationsHandler)))
+	mux.Handle("/recent-prices", noStore(http.HandlerFunc(recentPricesHandler)))
+	mux.Handle("/latest-station-page", noStore(http.HandlerFunc(latestStationPageHandler)))
+	mux.Handle("/latest-price-page", noStore(http.HandlerFunc(latestPricePageHandler)))
+
+	// ----------------------
+	// Static asset routes
+	// ----------------------
+	jsFS := http.FileServer(http.Dir("static/js"))
+	cssFS := http.FileServer(http.Dir("static/css"))
+	imgFS := http.FileServer(http.Dir("static/img"))
+
+	mux.Handle("/js/",
+		cacheAssets(
+			http.StripPrefix("/js/", jsFS)))
+
+	mux.Handle("/css/",
+		cacheAssets(
+			http.StripPrefix("/css/", cssFS)))
+
+	mux.Handle("/img/",
+		cacheAssets(
+			http.StripPrefix("/img/", imgFS)))
+
+	// ----------------------
+	// Root (index.html)
+	// ----------------------
+	mux.HandleFunc("/", rootHandler)
 
 	go func() {
 		log.Println("Starting web server on :8080")
-		if err := http.ListenAndServe("0.0.0.0:8080", nil); err != nil {
+		if err := http.ListenAndServe("0.0.0.0:8080", mux); err != nil {
 			log.Fatalf("Failed to start web server: %v", err)
 		}
 	}()

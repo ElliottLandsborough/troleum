@@ -33,5 +33,8 @@ RUN mkdir -p json
 # Copy the binary from the builder
 COPY --from=builder /app/main .
 
+# Copy the static files (if any)
+COPY static ./static
+
 # Run the binary
 CMD ["./main"]

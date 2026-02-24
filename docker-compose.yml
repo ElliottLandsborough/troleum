@@ -36,6 +36,7 @@ services:
         condition: service_healthy
     volumes:
       - ./json:/app/json  # Mount JSON directory for file persistence
+      - ./static:/app/static  # Mount static directory for file persistence
 
 volumes:
   postgres_data:
