@@ -574,11 +574,8 @@ func GetMostRecentSuccessfulRequestsFromDatabase(requestType RequestType, limit 
 	return results, nil
 }
 
-// GetHighestSuccessfulPageNumber returns the highest page number that has a successful request
-func GetHighestSuccessfulPageNumber(requestType RequestType) (int, error) {
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-
+// getHighestSuccessfulPageNumber returns the highest page number (assumes mutex is already locked)
+func getHighestSuccessfulPageNumber(requestType RequestType) (int, error) {
 	if db == nil {
 		return 0, fmt.Errorf("database not initialized")
 	}
@@ -598,6 +595,13 @@ func GetHighestSuccessfulPageNumber(requestType RequestType) (int, error) {
 	return maxPage, nil
 }
 
+// GetHighestSuccessfulPageNumber returns the highest page number that has a successful request
+func GetHighestSuccessfulPageNumber(requestType RequestType) (int, error) {
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+	return getHighestSuccessfulPageNumber(requestType)
+}
+
 // GetMostRecentSuccessfulPageFromDatabase returns the most recent successful request for the highest available page
 func GetMostRecentSuccessfulPageFromDatabase(requestType RequestType) (*RequestLog, error) {
 	dbMutex.Lock()
@@ -607,8 +611,8 @@ func GetMostRecentSuccessfulPageFromDatabase(requestType RequestType) (*RequestL
 		return nil, fmt.Errorf("database not initialized")
 	}
 
-	// First get the highest page number
-	maxPage, err := GetHighestSuccessfulPageNumber(requestType)
+	// First get the highest page number (using internal helper to avoid deadlock)
+	maxPage, err := getHighestSuccessfulPageNumber(requestType)
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +627,7 @@ func GetMostRecentSuccessfulPageFromDatabase(requestType RequestType) (*RequestL
 			id, request_type, page_number, status_code, 
 			data, created_at, error_message
 		FROM request_logs 
-		WHERE request_type = $1 AND status_code = 200
+		WHERE request_type = $1 AND page_number = $2 AND status_code = 200
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
