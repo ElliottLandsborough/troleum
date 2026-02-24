@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,10 +11,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -226,6 +229,14 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	// Create context that can be cancelled for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling for graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
 	// Start enriching saved pages on a 15-second timer
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
@@ -235,13 +246,19 @@ func main() {
 		enrichSavedPages()
 
 		// Then run it every 15 seconds
-		for range ticker.C {
-			enrichSavedPages()
+		for {
+			select {
+			case <-ticker.C:
+				enrichSavedPages()
+			case <-ctx.Done():
+				log.Println("Enrichment worker stopped")
+				return
+			}
 		}
 	}()
 
 	// Start web server for saved pages
-	setupWebServer()
+	StartWebServer(ctx)
 
 	// load the .env file manually
 	if err := loadDotEnv(".env"); err != nil {
@@ -274,7 +291,20 @@ func main() {
 
 	// Keep main running and allow for other code
 	log.Println("Started continuous data fetching...")
-	select {} // Block forever, allowing the goroutine to run
+	log.Println("Press Ctrl+C or send SIGTERM to gracefully shut down")
+
+	// Wait for shutdown signal
+	<-stop
+	log.Println("\nReceived shutdown signal, initiating graceful shutdown...")
+
+	// Cancel context to signal all goroutines to stop
+	cancel()
+
+	// Give goroutines time to clean up (web server has its own 30s timeout)
+	log.Println("Waiting for background workers to finish...")
+	time.Sleep(2 * time.Second)
+
+	log.Println("Shutdown complete")
 }
 
 func retryWorker(client *OAuthClient, rateLimiter *time.Ticker) {

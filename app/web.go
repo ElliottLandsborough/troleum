@@ -2,12 +2,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Handler to return latest successful stations requests from database
@@ -156,7 +158,7 @@ func cacheAssets(next http.Handler) http.Handler {
 	})
 }
 
-func setupWebServer() {
+func setupWebServer() *http.Server {
 	mux := http.NewServeMux()
 
 	// ----------------------
@@ -195,10 +197,39 @@ func setupWebServer() {
 	// ----------------------
 	mux.HandleFunc("/", rootHandler)
 
+	return &http.Server{
+		Addr:    "0.0.0.0:8080",
+		Handler: mux,
+	}
+}
+
+// StartWebServer starts the web server and handles graceful shutdown
+func StartWebServer(ctx context.Context) *http.Server {
+	server := setupWebServer()
+
+	// Start server in goroutine
 	go func() {
 		log.Println("Starting web server on :8080")
-		if err := http.ListenAndServe("0.0.0.0:8080", mux); err != nil {
-			log.Fatalf("Failed to start web server: %v", err)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Web server error: %v", err)
 		}
 	}()
+
+	// Wait for context cancellation
+	go func() {
+		<-ctx.Done()
+		log.Println("Shutting down web server gracefully...")
+
+		// Create shutdown context with 30 second timeout
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Web server shutdown error: %v", err)
+		} else {
+			log.Println("Web server stopped gracefully")
+		}
+	}()
+
+	return server
 }
