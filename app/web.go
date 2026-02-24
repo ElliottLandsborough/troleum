@@ -12,6 +12,18 @@ import (
 	"time"
 )
 
+// writeJSONPretty writes data as pretty-printed JSON
+func writeJSONPretty(w http.ResponseWriter, data interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	// For minified output, use: jsonData, err := json.Marshal(data)
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(jsonData)
+	return err
+}
+
 // Handler to return latest successful stations requests from database
 func savedStationsHandler(w http.ResponseWriter, r *http.Request) {
 	stations, err := GetLatestSuccessfulRequestsFromDatabase(RequestTypeStationsPage)
@@ -20,8 +32,7 @@ func savedStationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(stations); err != nil {
+	if err := writeJSONPretty(w, stations); err != nil {
 		http.Error(w, "Failed to encode stations data", http.StatusInternalServerError)
 	}
 }
@@ -34,8 +45,7 @@ func savedPricesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(prices); err != nil {
+	if err := writeJSONPretty(w, prices); err != nil {
 		http.Error(w, "Failed to encode prices data", http.StatusInternalServerError)
 	}
 }
@@ -48,8 +58,7 @@ func dbStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(stats); err != nil {
+	if err := writeJSONPretty(w, stats); err != nil {
 		http.Error(w, "Failed to encode stats", http.StatusInternalServerError)
 	}
 }
@@ -70,8 +79,7 @@ func recentStationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(stations); err != nil {
+	if err := writeJSONPretty(w, stations); err != nil {
 		http.Error(w, "Failed to encode recent stations", http.StatusInternalServerError)
 	}
 }
@@ -92,8 +100,7 @@ func recentPricesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(prices); err != nil {
+	if err := writeJSONPretty(w, prices); err != nil {
 		http.Error(w, "Failed to encode recent prices", http.StatusInternalServerError)
 	}
 }
@@ -106,8 +113,7 @@ func latestStationPageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(latestPage); err != nil {
+	if err := writeJSONPretty(w, latestPage); err != nil {
 		http.Error(w, "Failed to encode latest station page", http.StatusInternalServerError)
 	}
 }
@@ -120,8 +126,7 @@ func latestPricePageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(latestPage); err != nil {
+	if err := writeJSONPretty(w, latestPage); err != nil {
 		http.Error(w, "Failed to encode latest price page", http.StatusInternalServerError)
 	}
 }
@@ -170,15 +175,24 @@ func setupWebServer() *http.Server {
 	mux.Handle("/admin/saved-prices-pages", noStore(http.HandlerFunc(savedPricesHandler)))
 
 	// Get database stats - todo: more stats like total requests, total successful, success rate, etc
+	// todo: estimated total stations/prices based on: db, memory
+	// todo: response:200 count per page, non:200 count per page
 	mux.Handle("/admin/db-stats", noStore(http.HandlerFunc(dbStatsHandler)))
 
 	// Get the 10 most recent successful stations/prices PAGES requests (with optional ?limit= query param)
 	mux.Handle("/admin/recent-stations", noStore(http.HandlerFunc(recentStationsHandler)))
 	mux.Handle("/admin/recent-prices", noStore(http.HandlerFunc(recentPricesHandler)))
 
-	// Get the most recent successful stations/prices PAGE request (just 1 result - the latest page fetched successfully)
+	// Get the most recent successful stations/prices PAGE request
+	// (just the latest page fetched successfully, but the data field might be 500 stations or prices)
 	mux.Handle("/admin/latest-station-page", noStore(http.HandlerFunc(latestStationPageHandler)))
 	mux.Handle("/admin/latest-price-page", noStore(http.HandlerFunc(latestPricePageHandler)))
+
+	// get all stations, with pagination, from memory
+	// ?page = 1,2,3... (default 1)
+	// ?per_page = 1,2,3... (default 20)
+	// ?location = lat,lng (optional, if provided, will return stations sorted by distance to this location)
+	// ?fuel_type = e5,e10,diesel (optional, if provided, will filter stations by fuel type)
 
 	// ----------------------
 	// Static asset routes
