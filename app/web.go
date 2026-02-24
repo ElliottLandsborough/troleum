@@ -14,7 +14,7 @@ import (
 
 // Handler to return latest successful stations requests from database
 func savedStationsHandler(w http.ResponseWriter, r *http.Request) {
-	stations, err := GetLatestSuccessfulRequests(RequestTypeStationsPage)
+	stations, err := GetLatestSuccessfulRequestsFromDatabase(RequestTypeStationsPage)
 	if err != nil {
 		http.Error(w, "Failed to get stations from database: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -28,7 +28,7 @@ func savedStationsHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handler to return latest successful prices requests from database
 func savedPricesHandler(w http.ResponseWriter, r *http.Request) {
-	prices, err := GetLatestSuccessfulRequests(RequestTypePricesPage)
+	prices, err := GetLatestSuccessfulRequestsFromDatabase(RequestTypePricesPage)
 	if err != nil {
 		http.Error(w, "Failed to get prices from database: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -64,7 +64,7 @@ func recentStationsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	stations, err := GetMostRecentSuccessfulRequests(RequestTypeStationsPage, limit)
+	stations, err := GetMostRecentSuccessfulRequestsFromDatabase(RequestTypeStationsPage, limit)
 	if err != nil {
 		http.Error(w, "Failed to get recent stations: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -86,7 +86,7 @@ func recentPricesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	prices, err := GetMostRecentSuccessfulRequests(RequestTypePricesPage, limit)
+	prices, err := GetMostRecentSuccessfulRequestsFromDatabase(RequestTypePricesPage, limit)
 	if err != nil {
 		http.Error(w, "Failed to get recent prices: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -100,7 +100,7 @@ func recentPricesHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handler to return the most recent successful page for stations
 func latestStationPageHandler(w http.ResponseWriter, r *http.Request) {
-	latestPage, err := GetMostRecentSuccessfulPage(RequestTypeStationsPage)
+	latestPage, err := GetMostRecentSuccessfulPageFromDatabase(RequestTypeStationsPage)
 	if err != nil {
 		http.Error(w, "Failed to get latest station page: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -114,7 +114,7 @@ func latestStationPageHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handler to return the most recent successful page for prices
 func latestPricePageHandler(w http.ResponseWriter, r *http.Request) {
-	latestPage, err := GetMostRecentSuccessfulPage(RequestTypePricesPage)
+	latestPage, err := GetMostRecentSuccessfulPageFromDatabase(RequestTypePricesPage)
 	if err != nil {
 		http.Error(w, "Failed to get latest price page: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -164,14 +164,21 @@ func setupWebServer() *http.Server {
 	// ----------------------
 	// API routes (no caching)
 	// ----------------------
-	mux.Handle("/saved-stations", noStore(http.HandlerFunc(savedStationsHandler)))
-	mux.Handle("/saved-prices", noStore(http.HandlerFunc(savedPricesHandler)))
-	mux.Handle("/db-stats", noStore(http.HandlerFunc(dbStatsHandler)))
 
-	mux.Handle("/recent-stations", noStore(http.HandlerFunc(recentStationsHandler)))
-	mux.Handle("/recent-prices", noStore(http.HandlerFunc(recentPricesHandler)))
-	mux.Handle("/latest-station-page", noStore(http.HandlerFunc(latestStationPageHandler)))
-	mux.Handle("/latest-price-page", noStore(http.HandlerFunc(latestPricePageHandler)))
+	// Get saved stations/prices PAGES from database. All pages returned
+	mux.Handle("/admin/saved-stations-pages", noStore(http.HandlerFunc(savedStationsHandler)))
+	mux.Handle("/admin/saved-prices-pages", noStore(http.HandlerFunc(savedPricesHandler)))
+
+	// Get database stats - todo: more stats like total requests, total successful, success rate, etc
+	mux.Handle("/admin/db-stats", noStore(http.HandlerFunc(dbStatsHandler)))
+
+	// Get the 10 most recent successful stations/prices PAGES requests (with optional ?limit= query param)
+	mux.Handle("/admin/recent-stations", noStore(http.HandlerFunc(recentStationsHandler)))
+	mux.Handle("/admin/recent-prices", noStore(http.HandlerFunc(recentPricesHandler)))
+
+	// Get the most recent successful stations/prices PAGE request (just 1 result - the latest page fetched successfully)
+	mux.Handle("/admin/latest-station-page", noStore(http.HandlerFunc(latestStationPageHandler)))
+	mux.Handle("/admin/latest-price-page", noStore(http.HandlerFunc(latestPricePageHandler)))
 
 	// ----------------------
 	// Static asset routes

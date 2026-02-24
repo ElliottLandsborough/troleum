@@ -100,6 +100,7 @@ func processJSONArray[T any](jsonData string, pageNum int, dataType string) ([]T
 	if err != nil {
 		dataLen := len(jsonData)
 		preview := jsonData
+		// todo: why is this 200 here and there are mixed 200/100 elsewhere? are they linked?
 		if dataLen > 200 {
 			preview = jsonData[:200] + "..."
 		}
@@ -392,8 +393,9 @@ func SaveRequestToDatabase(requestType RequestType, pageNumber int, statusCode i
 	return nil
 }
 
-// GetLatestSuccessfulRequests returns the latest successful (status 200) request for each unique page number by request type
-func GetLatestSuccessfulRequests(requestType RequestType) ([]RequestLog, error) {
+// GetLatestSuccessfulRequestsFromDatabase returns the latest successful (status 200) request for each unique page number by request type
+// Example: If you've fetched pages 1-16, returns 16 results (one per page)
+func GetLatestSuccessfulRequestsFromDatabase(requestType RequestType) ([]RequestLog, error) {
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -401,6 +403,7 @@ func GetLatestSuccessfulRequests(requestType RequestType) ([]RequestLog, error) 
 		return nil, fmt.Errorf("database not initialized")
 	}
 
+	// todo: when parsing, why limit this val to 100 with a substring?
 	query := `
 		SELECT DISTINCT ON (page_number) 
 			id, request_type, page_number, status_code, 
@@ -521,7 +524,8 @@ func GetFullDataForEnrichment(requestType RequestType, limit int) ([]RequestLog,
 }
 
 // GetMostRecentSuccessfulRequests returns the most recent successful (status 200) requests, ordered by timestamp
-func GetMostRecentSuccessfulRequests(requestType RequestType, limit int) ([]RequestLog, error) {
+// Example: If you've fetched pages 1-16 multiple times, returns only the 10 most recent (with limit=10)
+func GetMostRecentSuccessfulRequestsFromDatabase(requestType RequestType, limit int) ([]RequestLog, error) {
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -529,6 +533,7 @@ func GetMostRecentSuccessfulRequests(requestType RequestType, limit int) ([]Requ
 		return nil, fmt.Errorf("database not initialized")
 	}
 
+	// todo: when parsing, why limit this val to 200 with a substring?
 	query := `
 		SELECT 
 			id, request_type, page_number, status_code, 
@@ -593,8 +598,8 @@ func GetHighestSuccessfulPageNumber(requestType RequestType) (int, error) {
 	return maxPage, nil
 }
 
-// GetMostRecentSuccessfulPage returns the most recent successful request for the highest available page
-func GetMostRecentSuccessfulPage(requestType RequestType) (*RequestLog, error) {
+// GetMostRecentSuccessfulPageFromDatabase returns the most recent successful request for the highest available page
+func GetMostRecentSuccessfulPageFromDatabase(requestType RequestType) (*RequestLog, error) {
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -618,7 +623,7 @@ func GetMostRecentSuccessfulPage(requestType RequestType) (*RequestLog, error) {
 			id, request_type, page_number, status_code, 
 			data, created_at, error_message
 		FROM request_logs 
-		WHERE request_type = $1 AND page_number = $2 AND status_code = 200
+		WHERE request_type = $1 AND status_code = 200
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
