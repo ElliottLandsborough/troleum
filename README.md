@@ -133,3 +133,5 @@ Metrics/Observability: Track processing success rates, entity counts
 Batch Processing: Process multiple JSON strings efficiently
 Configuration: Make JSON format detection rules configurable
 Async Processing: Background processing with channels for high throughput
+
+Currently no prod image/deployment system. Work this out at some point.
