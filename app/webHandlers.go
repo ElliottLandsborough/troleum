@@ -29,8 +29,8 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stationLocationsMutex.Lock()
+	defer stationLocationsMutex.Unlock()
 	val := stationLocations
-	stationLocationsMutex.Unlock()
 
 	// Return stations as JSON
 	if err := writeJSONPretty(w, val); err != nil {

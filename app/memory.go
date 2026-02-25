@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
@@ -37,6 +38,46 @@ var savedPricesPages = make(map[int]ResponseCache, 100)
 var savedStationsPagesMutex sync.Mutex
 var savedPricesPagesMutex sync.Mutex
 
+// enrichmentTimer is a global timer that triggers the enrichment process
+var enrichmentTimer *time.Timer
+var enrichmentTimerMutex sync.Mutex
+
+// InitEnrichmentTimer initializes the enrichment timer that triggers loading data from cached responses
+func initEnrichmentTimer(ctx context.Context) {
+	enrichmentTimer = time.NewTimer(60 * time.Second)
+
+	go func() {
+		for {
+			select {
+			case <-enrichmentTimer.C:
+				triggerEnrichmentWithReset()
+			case <-ctx.Done():
+				enrichmentTimerMutex.Lock()
+				enrichmentTimer.Stop()
+				enrichmentTimerMutex.Unlock()
+				log.Println("Enrichment worker stopped")
+				return
+			}
+		}
+	}()
+
+	// Run immediately on startup
+	triggerEnrichmentWithReset()
+}
+
+// Call this manually OR let the timer call it automatically
+func triggerEnrichmentWithReset() {
+	enrichmentTimerMutex.Lock()
+	defer enrichmentTimerMutex.Unlock()
+
+	if enrichmentTimer == nil {
+		log.Println("[ENRICH] WARNING: Timer not initialized yet, skipping")
+		return
+	}
+	loadDataFromCachedResponses()
+	enrichmentTimer.Reset(600 * time.Second) // Resets timer to 10 minutes
+}
+
 // StoreJSONPageInMemory saves the raw JSON string of a page into the appropriate in-memory map for later enrichment
 func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestType, nodeIdCount int) {
 	if nodeIdCount == 0 {
@@ -68,6 +109,9 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 		}
 		savedPricesPagesMutex.Unlock()
 	}
+
+	// After storing the page in memory, we can trigger the enrichment process immediately
+	triggerEnrichmentWithReset()
 }
 
 // This function will take a global slice, a mutex, and an integer
@@ -144,6 +188,8 @@ func mergeEntities[T NodeIDEntity](newEntities []T, globalSlice *[]T, globalInde
 
 // Merges station locations from newStations into the stationLocations map
 func mergeStationLocations(newStations []Station) {
+	stationLocationsMutex.Lock()
+	defer stationLocationsMutex.Unlock()
 	for _, newStation := range newStations {
 		if _, exists := stationLocations[newStation.NodeID]; !exists {
 			stationLocations[newStation.NodeID] = LatLon{

@@ -35,26 +35,8 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// Async enrich data from caches responses
-	go func() {
-		// Create a ticker to run the enrichment every 60 seconds
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-
-		// Run immediately on startup
-		loadDataFromCachedResponses()
-
-		// Then run on each tick (see the timer above)
-		for {
-			select {
-			case <-ticker.C:
-				loadDataFromCachedResponses()
-			case <-ctx.Done():
-				log.Println("Enrichment worker stopped")
-				return
-			}
-		}
-	}()
+	// Initialize enrichment timer BEFORE starting fetchers
+	initEnrichmentTimer(ctx)
 
 	// Start web server for saved pages
 	StartWebServer(ctx)
