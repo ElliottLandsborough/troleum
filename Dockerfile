@@ -9,10 +9,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy the rest of the source code
-COPY app/api.go /app/
+COPY app/config.go /app/
+COPY app/database.go /app/
+COPY app/govApi.go /app/
+COPY app/json.go /app/
 COPY app/main.go /app/
-COPY app/storage.go /app/
-COPY app/web.go /app/
+COPY app/memory.go /app/
+COPY app/prices.go /app/
+COPY app/queue.go /app/
+COPY app/stations.go /app/
+COPY app/webHandlers.go /app/
+COPY app/webServer.go /app/
 
 RUN ls -alh /app
 

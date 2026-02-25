@@ -1,17 +1,154 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
+type TokenData struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type TokenEnvelope struct {
+	Success bool      `json:"success"`
+	Data    TokenData `json:"data"`
+	Message string    `json:"message"`
+}
+
+type OAuthClient struct {
+	httpClient   *http.Client
+	tokenURL     string
+	clientID     string
+	clientSecret string
+	scope        string
+
+	token     *TokenData
+	expiresAt time.Time
+	mu        sync.Mutex
+}
+
+// Constructor
+func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient {
+	return &OAuthClient{
+		httpClient:   &http.Client{Timeout: 120 * time.Second},
+		tokenURL:     tokenURL,
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		scope:        scope,
+	}
+}
+
+// Public API call helper (auto-refreshes)
+func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
+	token, err := c.getValidToken()
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	return c.httpClient.Do(req)
+}
+
+// Get a valid token (cached + refresh-safe)
+func (c *OAuthClient) getValidToken() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// If token exists and is not close to expiring, reuse it
+	if c.token != nil && time.Now().Before(c.expiresAt.Add(-30*time.Second)) {
+		return c.token.AccessToken, nil
+	}
+
+	if c.token != nil && c.token.RefreshToken != "" {
+		if err := c.refreshToken(); err == nil {
+			return c.token.AccessToken, nil
+		}
+	}
+
+	// Fallback to client credentials flow
+	if err := c.fetchToken(); err != nil {
+		return "", err
+	}
+
+	return c.token.AccessToken, nil
+}
+
+// Fetch token (client_credentials)
+func (c *OAuthClient) fetchToken() error {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", c.clientID)
+	form.Set("client_secret", c.clientSecret)
+	form.Set("scope", c.scope)
+
+	return c.requestToken(form)
+}
+
+// Refresh token
+func (c *OAuthClient) refreshToken() error {
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", c.token.RefreshToken)
+	form.Set("client_id", c.clientID)
+	form.Set("client_secret", c.clientSecret)
+
+	return c.requestToken(form)
+}
+
+// Shared token request logic
+func (c *OAuthClient) requestToken(form url.Values) error {
+	req, err := http.NewRequest(
+		http.MethodPost,
+		c.tokenURL,
+		bytes.NewBufferString(form.Encode()),
+	)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("token request failed: %s", body)
+	}
+
+	var envelope TokenEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return err
+	}
+
+	if !envelope.Success {
+		return fmt.Errorf("token error: %s", envelope.Message)
+	}
+
+	c.token = &envelope.Data
+	c.expiresAt = time.Now().Add(time.Duration(c.token.ExpiresIn) * time.Second)
+
+	return nil
+}
+
+/*
 // RawStationsResponse represents the raw response from the API when fetching station data.
 type RawStationsResponse struct {
 	StatusCode uint16
@@ -25,11 +162,12 @@ type RawPricesResponse struct {
 	Data       json.RawMessage
 	CreatedAt  time.Time
 }
+*/
 
 func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
 	// We only just cached this 60 minutes ago, so skip if within that time
 	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
-	if isFileRecentEnough(filePath, 60) {
+	if isJSONFileRecentEnough(filePath, 60) {
 		log.Printf("[STATIONS] Skipping page %d - file exists and is recent enough", pageNum)
 		// Need to check if this is the last page by reading the existing file
 		content, err := os.ReadFile(filePath)
@@ -113,7 +251,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
 	// If we cached the price 5 minutes ago anyway, skip the cache refresh, worst case we lose 5mins of data
 	filePath := filepath.Join("json", fmt.Sprintf("prices_page_%d.json", pageNum))
-	if isFileRecentEnough(filePath, 5) {
+	if isJSONFileRecentEnough(filePath, 5) {
 		log.Printf("[PRICES] Skipping page %d - file exists and is recent enough", pageNum)
 		// Need to check if this is the last page by reading the existing file
 		content, err := os.ReadFile(filePath)
