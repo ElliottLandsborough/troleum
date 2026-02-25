@@ -212,7 +212,13 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, bodyString, errorMessage)
+
+	preview := bodyString
+	if len(preview) > JSONPreviewLength {
+		preview = preview[:JSONPreviewLength]
+	}
+
+	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, preview, errorMessage)
 
 	// This used to be above, in the commented area.
 	// Moved here so that we always save the log to db even if saving the file fails
@@ -277,7 +283,13 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, bodyString, errorMessage)
+
+	preview := bodyString
+	if len(preview) > JSONPreviewLength {
+		preview = preview[:JSONPreviewLength]
+	}
+
+	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, preview, errorMessage)
 
 	// This used to be above, in the commented area.
 	// Moved here so that we always save the log to db even if saving the file fails

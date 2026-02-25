@@ -197,8 +197,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage, nodeIdCount)
 
 	// Save the page to JSON file (for debug purposes, not used for enrichment)
-	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
-	filePath, err = savePageJSON(bodyString, pageNum, "stations")
+	filePath, err := savePageJSON(bodyString, pageNum, "stations")
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -210,7 +209,13 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, bodyString, errorMessage)
+
+	preview := bodyString
+	if len(preview) > JSONPreviewLength {
+		preview = preview[:JSONPreviewLength]
+	}
+
+	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, preview, errorMessage)
 	log.Printf("[STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
@@ -274,8 +279,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	// Save the page to JSON file
 
 	// If we cached the price 5 minutes ago anyway, skip the cache refresh, worst case we lose 5mins of data
-	filePath := filepath.Join("json", fmt.Sprintf("prices_page_%d.json", pageNum))
-	filePath, err = savePageJSON(bodyString, pageNum, "prices")
+	filePath, err := savePageJSON(bodyString, pageNum, "prices")
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -287,7 +291,13 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, bodyString, errorMessage)
+
+	preview := bodyString
+	if len(preview) > JSONPreviewLength {
+		preview = preview[:JSONPreviewLength]
+	}
+
+	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, preview, errorMessage)
 	log.Printf("[PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
