@@ -172,7 +172,7 @@ func loadDataFromSingleCachedPageResponse(pageNum int, requestType RequestType) 
 		return
 	}
 
-	log.Printf("[ENRICH] Loading data from SINGLE cached response for page %d of type %s", pageNum, requestType)
+	log.Printf("[ENRICH] Loading data from cached response for page %d of type %s", pageNum, requestType)
 
 	switch requestType {
 	case RequestTypeStationsPage:
@@ -306,59 +306,71 @@ func removeStationsNotInSet(nodeIdSet map[string]struct{}) {
 	stationsMutex.Lock()
 	defer stationsMutex.Unlock()
 
-	if len(stations) != len(nodeIdSet) {
-		newStations := make([]Station, 0, 100000)
-		newStationsIndex := make(map[string]int, 100000)
-
-		log.Printf("[CLEANUP] Current station count before removal: %d", len(stations))
-		for _, station := range stations {
-			if _, exists := nodeIdSet[station.NodeID]; exists {
-				newStationsIndex[station.NodeID] = len(newStations)
-				newStations = append(newStations, station)
-			}
-		}
-		log.Printf("[CLEANUP] New station count after removal: %d", len(newStations))
-		stations = newStations
-		stationsIndex = newStationsIndex
+	if len(stations) == len(nodeIdSet) {
+		log.Printf("[CLEANUP] Station count matches node ID count, no stations to remove.")
+		return
 	}
+
+	newStations := make([]Station, 0, 100000)
+	newStationsIndex := make(map[string]int, 100000)
+
+	log.Printf("[CLEANUP] Current station count before removal: %d", len(stations))
+	for _, station := range stations {
+		if _, exists := nodeIdSet[station.NodeID]; exists {
+			newStationsIndex[station.NodeID] = len(newStations)
+			newStations = append(newStations, station)
+		}
+	}
+
+	log.Printf("[CLEANUP] New station count after removal: %d", len(newStations))
+	stations = newStations
+	stationsIndex = newStationsIndex
 }
 
 func removePriceStationsNotInSet(nodeIdSet map[string]struct{}) {
 	priceStationsMutex.Lock()
 	defer priceStationsMutex.Unlock()
 
-	if len(priceStations) != len(nodeIdSet) {
-		newPriceStations := make([]PriceStation, 0, 100000)
-		newPriceStationsIndex := make(map[string]int, 100000)
-
-		log.Printf("[CLEANUP] Current price station count before removal: %d", len(priceStations))
-		for _, priceStation := range priceStations {
-			if _, exists := nodeIdSet[priceStation.NodeID]; exists {
-				newPriceStationsIndex[priceStation.NodeID] = len(newPriceStations)
-				newPriceStations = append(newPriceStations, priceStation)
-			}
-		}
-		log.Printf("[CLEANUP] New price station count after removal: %d", len(newPriceStations))
-		priceStations = newPriceStations
-		priceStationsIndex = newPriceStationsIndex
+	if len(priceStations) == len(nodeIdSet) {
+		log.Printf("[CLEANUP] Price station count matches node ID count, no price stations to remove.")
+		return
 	}
+
+	newPriceStations := make([]PriceStation, 0, 100000)
+	newPriceStationsIndex := make(map[string]int, 100000)
+
+	log.Printf("[CLEANUP] Current price station count before removal: %d", len(priceStations))
+	for _, priceStation := range priceStations {
+		if _, exists := nodeIdSet[priceStation.NodeID]; exists {
+			newPriceStationsIndex[priceStation.NodeID] = len(newPriceStations)
+			newPriceStations = append(newPriceStations, priceStation)
+		}
+	}
+
+	log.Printf("[CLEANUP] New price station count after removal: %d", len(newPriceStations))
+	priceStations = newPriceStations
+	priceStationsIndex = newPriceStationsIndex
 }
 
 func removeStationLocationsNotInSet(nodeIdSet map[string]struct{}) {
 	stationLocationsMutex.Lock()
 	defer stationLocationsMutex.Unlock()
 
-	if len(stationLocations) != len(nodeIdSet) {
-		log.Printf("[CLEANUP] Current station locations count before removal: %d", len(stationLocations))
-		newStationLocations := make(map[string]LatLon, 100000)
-		for nodeId, location := range stationLocations {
-			if _, exists := nodeIdSet[nodeId]; exists {
-				newStationLocations[nodeId] = location
-			}
-		}
-		log.Printf("[CLEANUP] New station locations count after removal: %d", len(newStationLocations))
-		stationLocations = newStationLocations
+	if len(stationLocations) == len(nodeIdSet) {
+		log.Printf("[CLEANUP] Station locations count matches node ID count, no station locations to remove.")
+		return
 	}
+
+	log.Printf("[CLEANUP] Current station locations count before removal: %d", len(stationLocations))
+	newStationLocations := make(map[string]LatLon, 100000)
+	for nodeId, location := range stationLocations {
+		if _, exists := nodeIdSet[nodeId]; exists {
+			newStationLocations[nodeId] = location
+		}
+	}
+
+	log.Printf("[CLEANUP] New station locations count after removal: %d", len(newStationLocations))
+	stationLocations = newStationLocations
 }
 
 // Merges station locations from newStations into the stationLocations map
