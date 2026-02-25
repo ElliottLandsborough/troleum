@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -149,28 +148,6 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 }
 
 func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
-	// We only just cached this 60 minutes ago, so skip if within that time
-	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
-	if isJSONFileRecentEnough(filePath, 60) {
-		log.Printf("[STATIONS] Skipping page %d - file exists and is recent enough", pageNum)
-		// Need to check if this is the last page by reading the existing file
-		content, err := os.ReadFile(filePath)
-		if err == nil {
-			contentString := string(content)
-			nodeIdCount := strings.Count(contentString, "node_id")
-			log.Printf("[STATIONS] Existing page %d contains %d node_id occurrences", pageNum, nodeIdCount)
-
-			if nodeIdCount > 0 {
-				log.Printf("[STATIONS] Caching page %d from existing file into memory", pageNum)
-				StoreJSONPageInMemory(pageNum, contentString, RequestTypeStationsPage, nodeIdCount)
-			}
-
-			return nodeIdCount < NodeIDCountThreshold
-		}
-		// If we can't read the file, assume it's not the last page to be safe
-		return false
-	}
-
 	// Wait for rate limiter only when we're about to make an API call
 	log.Printf("[STATIONS] Waiting for rate limiter before fetching page %d", pageNum)
 	<-rateLimiter.C
