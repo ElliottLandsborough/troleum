@@ -186,12 +186,19 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 		return false
 	}
 
+	bodyString := string(body)
+
 	// Check if this is the last page by counting 'node_id' occurrences
-	nodeIdCount := strings.Count(string(body), "node_id")
-	log.Printf("[RETRY-STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+	nodeIdCount := strings.Count(bodyString, "node_id")
+	if nodeIdCount > 0 {
+		log.Printf("[RETRY-STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+		StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage)
+	} else {
+		log.Printf("[RETRY-STATIONS] Page %d contains no node_id occurrences", pageNum)
+	}
 
 	// Save the page
-	filePath, err := savePageJSON(string(body), pageNum, "stations")
+	filePath, err := savePageJSON(bodyString, pageNum, "stations")
 	if err != nil {
 		log.Printf("[RETRY-STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 		// commented area:
@@ -205,7 +212,7 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, bodyString, errorMessage)
 
 	// This used to be above, in the commented area.
 	// Moved here so that we always save the log to db even if saving the file fails
@@ -215,9 +222,6 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 	}
 
 	log.Printf("[RETRY-STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
-
-	// Store the saved page datetime in a map
-	storeSavedPage(savedStationsPages, &savedPagesMutex, pageNum, filePath)
 
 	return true
 }
@@ -247,12 +251,19 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 		return false
 	}
 
+	bodyString := string(body)
+
 	// Check if this is the last page by counting 'node_id' occurrences
-	nodeIdCount := strings.Count(string(body), "node_id")
-	log.Printf("[RETRY-PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+	nodeIdCount := strings.Count(bodyString, "node_id")
+	if nodeIdCount > 0 {
+		log.Printf("[RETRY-PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+		StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage)
+	} else {
+		log.Printf("[RETRY-PRICES] Page %d contains no node_id occurrences", pageNum)
+	}
 
 	// Save the page
-	filePath, err := savePageJSON(string(body), pageNum, "prices")
+	filePath, err := savePageJSON(bodyString, pageNum, "prices")
 	if err != nil {
 		log.Printf("[RETRY-PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 		// commented area:
@@ -266,7 +277,7 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, bodyString, errorMessage)
 
 	// This used to be above, in the commented area.
 	// Moved here so that we always save the log to db even if saving the file fails
@@ -276,9 +287,6 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	}
 
 	log.Printf("[RETRY-PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
-
-	// Store the saved page datetime in a map
-	storeSavedPage(savedPricesPages, &savedPagesMutex, pageNum, filePath)
 
 	return true
 }

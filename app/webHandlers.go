@@ -6,6 +6,60 @@ import (
 	"strconv"
 )
 
+func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	/*
+		perPageStr := r.URL.Query().Get("per_page")
+		perPage := 20 // default
+		if perPageStr != "" {
+			if p, err := strconv.Atoi(perPageStr); err == nil && p > 0 {
+				perPage = p
+			}
+		}
+	*/
+
+	location := r.URL.Query().Get("location")
+	fuelType := r.URL.Query().Get("fuel_type")
+
+	// Fetch stations from database with optional filtering/sorting
+	_, err := GetStationsFromDatabase(location, fuelType)
+	if err != nil {
+		http.Error(w, "Failed to get stations: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	stationLocationsMutex.Lock()
+	val := stationLocations
+	stationLocationsMutex.Unlock()
+
+	// Return stations as JSON
+	if err := writeJSONPretty(w, val); err != nil {
+		http.Error(w, "Failed to encode stations data", http.StatusInternalServerError)
+	}
+}
+
+// todo: move to database.go
+func GetStationsFromDatabase(location string, fuelType string) ([]Station, error) {
+	// This function should query the database for stations, applying any necessary filters or sorting based on the parameters.
+	// For example, it might use SQL queries to filter by fuel type or sort by distance if location is provided.
+	// The implementation details would depend on the database schema and the ORM or database library being used.
+
+	// Placeholder implementation - replace with actual database query logic
+	return []Station{}, nil
+
+	/*
+			        {
+		                id: 1,
+		                name: "Eiffel Tower",
+		                lat: 48.8584,
+		                lng: 2.2945,
+		                city: "Paris, France",
+		                description: "Iconic iron lattice tower on the Champ de Mars",
+		                type: "landmark"
+		            },
+	*/
+}
+
 // Handler to return latest successful stations requests from database
 func savedStationsHandler(w http.ResponseWriter, r *http.Request) {
 	stations, err := GetLatestSuccessfulRequestsFromDatabase(RequestTypeStationsPage)

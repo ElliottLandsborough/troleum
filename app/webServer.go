@@ -71,6 +71,7 @@ func setupWebServer() *http.Server {
 	// ?per_page = 1,2,3... (default 20)
 	// ?location = lat,lng (optional, if provided, will return stations sorted by distance to this location)
 	// ?fuel_type = e5,e10,diesel (optional, if provided, will filter stations by fuel type)
+	mux.Handle("/stations", noStore(http.HandlerFunc(stationsAPIHandler)))
 
 	// ----------------------
 	// Static asset routes

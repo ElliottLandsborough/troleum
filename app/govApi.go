@@ -172,8 +172,15 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		// Need to check if this is the last page by reading the existing file
 		content, err := os.ReadFile(filePath)
 		if err == nil {
-			nodeIdCount := strings.Count(string(content), "node_id")
+			contentString := string(content)
+			nodeIdCount := strings.Count(contentString, "node_id")
 			log.Printf("[STATIONS] Existing page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+			if nodeIdCount > 0 {
+				log.Printf("[STATIONS] Caching page %d from existing file into memory", pageNum)
+				StoreJSONPageInMemory(pageNum, contentString, RequestTypeStationsPage)
+			}
+
 			return nodeIdCount < 500
 		}
 		// If we can't read the file, assume it's not the last page to be safe
@@ -213,9 +220,10 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		return false
 	}
 
+	bodyString := string(body)
+
 	// Check if this is the last page by counting 'node_id' occurrences
-	nodeIdCount := strings.Count(string(body), "node_id")
-	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+	nodeIdCount := strings.Count(bodyString, "node_id")
 
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
@@ -223,8 +231,12 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		return true
 	}
 
+	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage)
+
 	// Save the page to JSON file (for debug purposes, not used for enrichment)
-	filePath, err = savePageJSON(string(body), pageNum, "stations")
+	filePath, err = savePageJSON(bodyString, pageNum, "stations")
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -236,7 +248,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, bodyString, errorMessage)
 	log.Printf("[STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than 500 node_ids (last page)
@@ -256,8 +268,15 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		// Need to check if this is the last page by reading the existing file
 		content, err := os.ReadFile(filePath)
 		if err == nil {
-			nodeIdCount := strings.Count(string(content), "node_id")
+			contentString := string(content)
+			nodeIdCount := strings.Count(contentString, "node_id")
 			log.Printf("[PRICES] Existing page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+			if nodeIdCount > 0 {
+				log.Printf("[PRICES] Caching page %d from existing file into memory", pageNum)
+				StoreJSONPageInMemory(pageNum, contentString, RequestTypePricesPage)
+			}
+
 			return nodeIdCount < 500
 		}
 		// If we can't read the file, assume it's not the last page to be safe
@@ -297,9 +316,10 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		return false
 	}
 
+	bodyString := string(body)
+
 	// Check if this is the last page by counting 'node_id' occurrences
-	nodeIdCount := strings.Count(string(body), "node_id")
-	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+	nodeIdCount := strings.Count(bodyString, "node_id")
 
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
@@ -307,8 +327,12 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		return true
 	}
 
+	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
+
+	StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage)
+
 	// Save the page to JSON file (for debug purposes, not used for enrichment)
-	filePath, err = savePageJSON(string(body), pageNum, "prices")
+	filePath, err = savePageJSON(bodyString, pageNum, "prices")
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
@@ -320,7 +344,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, string(body), errorMessage)
+	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, bodyString, errorMessage)
 	log.Printf("[PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than 500 node_ids (last page)

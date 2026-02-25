@@ -16,6 +16,7 @@ type RequestType string
 const (
 	RequestTypeStationsPage RequestType = "stations_page"
 	RequestTypePricesPage   RequestType = "prices_page"
+	JSONPreviewLength                   = 100 // Limit for previewing JSON data in logs and database
 )
 
 // todo:
@@ -41,13 +42,13 @@ func main() {
 		defer ticker.Stop()
 
 		// Run enrichSavedPages immediately on startup
-		enrichSavedPages()
+		loadDataFromCachedResponses()
 
 		// Then run it every 15 seconds
 		for {
 			select {
 			case <-ticker.C:
-				enrichSavedPages()
+				loadDataFromCachedResponses()
 			case <-ctx.Done():
 				log.Println("Enrichment worker stopped")
 				return

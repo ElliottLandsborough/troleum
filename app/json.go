@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -218,6 +217,7 @@ func processJSONArray[T any](jsonData string, pageNum int, dataType string) ([]T
 }
 
 // ProcessJSONFromAnywhere - public function to process JSON data from anywhere in the app
+/*
 func ProcessJSONFromAnywhere(jsonData string, dataType string) error {
 	switch strings.ToLower(dataType) {
 	case "stations", "station":
@@ -242,6 +242,7 @@ func ProcessJSONFromAnywhere(jsonData string, dataType string) error {
 		return fmt.Errorf("unknown data type: %s (supported: stations, prices)", dataType)
 	}
 }
+*/
 
 func getPricesPageFilePath(pageNum int) string {
 	return "json/prices_page_" + strconv.Itoa(pageNum) + ".json"

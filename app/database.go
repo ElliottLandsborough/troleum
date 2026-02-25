@@ -20,7 +20,7 @@ type RequestLog struct {
 	RequestType  RequestType `db:"request_type"` // "stations_page" or "prices_page"
 	PageNumber   int         `db:"page_number"`
 	StatusCode   int         `db:"status_code"`
-	Data         string      `db:"data"`
+	DataPreview  string      `db:"data_preview"` // Store a preview of the data (first 100 chars) for performance
 	CreatedAt    time.Time   `db:"created_at"`
 	ErrorMessage string      `db:"error_message"`
 }
@@ -50,14 +50,14 @@ func InitDatabase() error {
 		return fmt.Errorf("failed to ping database: %v", err)
 	}
 
-	// Create the request_logs table if it doesn't exist
 	createTableSQL := `
+	    -- Create request_logs table to store API request logs
 		CREATE TABLE IF NOT EXISTS request_logs (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			request_type VARCHAR(15) NOT NULL, -- 'stations_page' or 'prices_page'
 			page_number INTEGER NOT NULL,
 			status_code INTEGER NOT NULL,
-			data TEXT,
+			data_preview VARCHAR(100),
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 			error_message TEXT
 		);
@@ -75,7 +75,7 @@ func InitDatabase() error {
 }
 
 // SaveRequestToDatabase saves a request log entry to the database
-func SaveRequestToDatabase(requestType RequestType, pageNumber int, statusCode int, data string, errorMessage string) error {
+func SaveRequestToDatabase(requestType RequestType, pageNumber int, statusCode int, dataPreview string, errorMessage string) error {
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -84,11 +84,11 @@ func SaveRequestToDatabase(requestType RequestType, pageNumber int, statusCode i
 	}
 
 	query := `
-		INSERT INTO request_logs (request_type, page_number, status_code, data, error_message, created_at)
+		INSERT INTO request_logs (request_type, page_number, status_code, data_preview, error_message, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
-	_, err := db.Exec(query, string(requestType), pageNumber, statusCode, data, errorMessage, time.Now())
+	_, err := db.Exec(query, string(requestType), pageNumber, statusCode, dataPreview, errorMessage, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to insert request log: %v", err)
 	}
@@ -106,18 +106,17 @@ func GetLatestSuccessfulRequestsFromDatabase(requestType RequestType) ([]Request
 		return nil, fmt.Errorf("database not initialized")
 	}
 
-	// todo: when parsing, why limit this val to 100 with a substring?
 	query := `
 		SELECT DISTINCT ON (page_number) 
 			id, request_type, page_number, status_code, 
-			substring(data from 1 for 100) as data_preview, 
+			substring(data from 1 for $1) as data_preview, 
 			created_at, error_message
 		FROM request_logs 
-		WHERE request_type = $1 AND status_code = 200
+		WHERE request_type = $2 AND status_code = 200
 		ORDER BY page_number, created_at DESC
 	`
 
-	rows, err := db.Query(query, string(requestType))
+	rows, err := db.Query(query, JSONPreviewLength, string(requestType))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query latest successful requests: %v", err)
 	}
@@ -132,7 +131,7 @@ func GetLatestSuccessfulRequestsFromDatabase(requestType RequestType) ([]Request
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan request log: %v", err)
 		}
-		log.Data = dataPreview // Only preview for performance
+		log.DataPreview = dataPreview[0:JSONPreviewLength] // Only preview for performance
 		results = append(results, log)
 	}
 
@@ -196,7 +195,7 @@ func GetFullDataForEnrichment(requestType RequestType, limit int) ([]RequestLog,
 		FROM (
 			SELECT 
 				id, request_type, page_number, status_code, 
-				data, created_at, error_message,
+				data_preview, created_at, error_message,
 				ROW_NUMBER() OVER (PARTITION BY page_number ORDER BY created_at DESC) as rn
 			FROM request_logs 
 			WHERE request_type = $1 AND status_code = 200
@@ -216,7 +215,7 @@ func GetFullDataForEnrichment(requestType RequestType, limit int) ([]RequestLog,
 	for rows.Next() {
 		var log RequestLog
 		err := rows.Scan(&log.ID, &log.RequestType, &log.PageNumber,
-			&log.StatusCode, &log.Data, &log.CreatedAt, &log.ErrorMessage)
+			&log.StatusCode, &log.DataPreview, &log.CreatedAt, &log.ErrorMessage)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan request log: %v", err)
 		}
@@ -236,11 +235,10 @@ func GetMostRecentSuccessfulRequestsFromDatabase(requestType RequestType, limit 
 		return nil, fmt.Errorf("database not initialized")
 	}
 
-	// todo: when parsing, why limit this val to 200 with a substring?
 	query := `
 		SELECT 
 			id, request_type, page_number, status_code, 
-			substring(data from 1 for 200) as data_preview, 
+			substring(data from 1 for $1) as data_preview, 
 			created_at, error_message
 		FROM (
 			SELECT 
@@ -248,14 +246,14 @@ func GetMostRecentSuccessfulRequestsFromDatabase(requestType RequestType, limit 
 				data, created_at, error_message,
 				ROW_NUMBER() OVER (PARTITION BY page_number ORDER BY created_at DESC) as rn
 			FROM request_logs 
-			WHERE request_type = $1 AND status_code = 200
+			WHERE request_type = $2 AND status_code = 200
 		) ranked
 		WHERE rn = 1
 		ORDER BY created_at DESC
-		LIMIT $2
+		LIMIT $3
 	`
 
-	rows, err := db.Query(query, string(requestType), limit)
+	rows, err := db.Query(query, JSONPreviewLength, string(requestType), limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query most recent successful requests: %v", err)
 	}
@@ -270,7 +268,7 @@ func GetMostRecentSuccessfulRequestsFromDatabase(requestType RequestType, limit 
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan request log: %v", err)
 		}
-		log.Data = dataPreview
+		log.DataPreview = dataPreview[0:JSONPreviewLength] // Only preview for performance
 		results = append(results, log)
 	}
 
@@ -338,7 +336,7 @@ func GetMostRecentSuccessfulPageFromDatabase(requestType RequestType) (*RequestL
 	var log RequestLog
 	err = db.QueryRow(query, string(requestType), maxPage).Scan(
 		&log.ID, &log.RequestType, &log.PageNumber,
-		&log.StatusCode, &log.Data, &log.CreatedAt, &log.ErrorMessage)
+		&log.StatusCode, &log.DataPreview, &log.CreatedAt, &log.ErrorMessage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query most recent successful page: %v", err)
 	}
