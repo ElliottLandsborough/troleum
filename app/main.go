@@ -38,6 +38,9 @@ func main() {
 	// Initialize enrichment timer BEFORE starting fetchers
 	initEnrichmentTimer(ctx)
 
+	// enrich memory from json files on startup
+	loadDataFromJSONFiles()
+
 	// Start web server for saved pages
 	StartWebServer(ctx)
 

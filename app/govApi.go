@@ -245,28 +245,6 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 }
 
 func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
-	// If we cached the price 5 minutes ago anyway, skip the cache refresh, worst case we lose 5mins of data
-	filePath := filepath.Join("json", fmt.Sprintf("prices_page_%d.json", pageNum))
-	if isJSONFileRecentEnough(filePath, 5) {
-		log.Printf("[PRICES] Skipping page %d - file exists and is recent enough", pageNum)
-		// Need to check if this is the last page by reading the existing file
-		content, err := os.ReadFile(filePath)
-		if err == nil {
-			contentString := string(content)
-			nodeIdCount := strings.Count(contentString, "node_id")
-			log.Printf("[PRICES] Existing page %d contains %d node_id occurrences", pageNum, nodeIdCount)
-
-			if nodeIdCount > 0 {
-				log.Printf("[PRICES] Caching page %d from existing file into memory", pageNum)
-				StoreJSONPageInMemory(pageNum, contentString, RequestTypePricesPage, nodeIdCount)
-			}
-
-			return nodeIdCount < NodeIDCountThreshold
-		}
-		// If we can't read the file, assume it's not the last page to be safe
-		return false
-	}
-
 	// Wait for rate limiter only when we're about to make an API call
 	log.Printf("[PRICES] Waiting for rate limiter before fetching page %d", pageNum)
 	<-rateLimiter.C
@@ -315,7 +293,10 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 
 	StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage, nodeIdCount)
 
-	// Save the page to JSON file (for debug purposes, not used for enrichment)
+	// Save the page to JSON file
+
+	// If we cached the price 5 minutes ago anyway, skip the cache refresh, worst case we lose 5mins of data
+	filePath := filepath.Join("json", fmt.Sprintf("prices_page_%d.json", pageNum))
 	filePath, err = savePageJSON(bodyString, pageNum, "prices")
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)

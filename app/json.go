@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -270,4 +272,67 @@ func readStationsFromFile(filePath string) ([]Station, error) {
 
 	// Return the stations data
 	return response.Data, nil
+}
+
+// loadDataFromJSONFiles loads data from existing JSON files into memory on startup
+func loadDataFromJSONFiles() {
+	entries, err := os.ReadDir("json")
+	if err != nil {
+		log.Printf("[STARTUP] Error reading json directory: %v", err)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if strings.HasPrefix(name, "stations_page_") && strings.HasSuffix(name, ".json") {
+			pageNumStr := strings.TrimSuffix(strings.TrimPrefix(name, "stations_page_"), ".json")
+			pageNum, err := strconv.Atoi(pageNumStr)
+			if err != nil {
+				log.Printf("[STARTUP] Error parsing page number from filename %s: %v", name, err)
+				continue
+			}
+
+			filePath := filepath.Join("json", name)
+			log.Printf("[STARTUP] Loading stations page %d from file: %s", pageNum, filePath)
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				log.Printf("[STARTUP] Error reading stations from file %s: %v", filePath, err)
+				continue
+			}
+
+			contentString := string(content)
+
+			nodeIdCount := strings.Count(contentString, "node_id")
+
+			// Store the stations data in memory
+			StoreJSONPageInMemory(pageNum, contentString, RequestTypeStationsPage, nodeIdCount)
+		} else if strings.HasPrefix(name, "prices_page_") && strings.HasSuffix(name, ".json") {
+			pageNumStr := strings.TrimSuffix(strings.TrimPrefix(name, "prices_page_"), ".json")
+			pageNum, err := strconv.Atoi(pageNumStr)
+			if err != nil {
+				log.Printf("[STARTUP] Error parsing page number from filename %s: %v", name, err)
+				continue
+			}
+
+			filePath := filepath.Join("json", name)
+			log.Printf("[STARTUP] Loading prices page %d from file: %s", pageNum, filePath)
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				log.Printf("[STARTUP] Error reading prices from file %s: %v", filePath, err)
+				continue
+			}
+
+			contentString := string(content)
+
+			nodeIdCount := strings.Count(contentString, "node_id")
+
+			// Store the prices data in memory
+			StoreJSONPageInMemory(pageNum, contentString, RequestTypePricesPage, nodeIdCount)
+
+		}
+	}
 }
