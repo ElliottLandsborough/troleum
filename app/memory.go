@@ -18,29 +18,35 @@ type ResponseCache struct {
 	Data      json.RawMessage // unlimited JSON string
 }
 
-// a map with the key node_id and the value LatLon
-var stationLocations = make(map[string]LatLon, 100000)
-var stationLocationsMutex sync.Mutex
-
-// Up to 100,000 stations expected (~80,000 in the uk)
+// How many petrol stations are there in the uk vs how many are on the system?
+// Google says 8,000 stations in uk, i've set this to 100,000 to be safe
 var stations = make([]Station, 0, 100000)
 var stationsIndex = make(map[string]int, 100000)
 var stationsMutex sync.Mutex
 
-// Up to 100,000 price entries expected, same count as stations
+// Stations and price listings are 1:1 so we should have no more then 8,000 (on dev?)
+// Set the same extremely high size in case there are more on prod.
 var priceStations = make([]PriceStation, 0, 100000)
 var priceStationsIndex = make(map[string]int, 100000)
 var priceStationsMutex sync.Mutex
 
+// 1:1 with stations. This is what we will use to search for nearby stations
+var stationLocations = make(map[string]LatLon, 100000)
+var stationLocationsMutex sync.Mutex
+
 // Map of indexed json files already saved with their page numbers and datestamps
-var savedStationsPages = make(map[int]ResponseCache, 100)
-var savedPricesPages = make(map[int]ResponseCache, 100)
+// I have set a size of 1000, i think there are less than 20 pages on dev, not sure about prod.
+var savedStationsPages = make(map[int]ResponseCache, 1000)
+var savedPricesPages = make(map[int]ResponseCache, 1000)
 var savedStationsPagesMutex sync.Mutex
 var savedPricesPagesMutex sync.Mutex
 
 // enrichmentTimer is a global timer that triggers the enrichment process
 var enrichmentTimer *time.Timer
 var enrichmentTimerMutex sync.Mutex
+
+// enrichmentInterval is the duration between automatic enrichments
+const enrichmentInterval = 10 * time.Minute
 
 // Reset the enrichment timer with a new duration, ensuring thread safety
 func resetEnrichmentTimerLocked(d time.Duration) {
@@ -58,7 +64,7 @@ func resetEnrichmentTimerLocked(d time.Duration) {
 
 // InitEnrichmentTimer initializes the enrichment timer that triggers loading data from cached responses
 func initEnrichmentTimer(ctx context.Context) {
-	enrichmentTimer = time.NewTimer(60 * time.Second)
+	enrichmentTimer = time.NewTimer(enrichmentInterval)
 
 	go func() {
 		for {
@@ -93,7 +99,7 @@ func triggerEnrichmentWithReset() {
 	loadDataFromCachedResponses()
 	// Next enrichment will run 600 seconds (10 minutes) after the last one finishes
 	// regardless of if you manually execute it or if the timer executes it.
-	resetEnrichmentTimerLocked(600 * time.Second)
+	resetEnrichmentTimerLocked(enrichmentInterval)
 }
 
 // StoreJSONPageInMemory saves the raw JSON string of a page into the appropriate in-memory map for later enrichment
