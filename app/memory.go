@@ -84,7 +84,7 @@ func initEnrichmentTimer(ctx context.Context) {
 	}()
 
 	// Run immediately on startup
-	triggerEnrichmentWithReset()
+	//triggerEnrichmentWithReset()
 }
 
 // Call this manually OR let the timer call it automatically
@@ -96,7 +96,7 @@ func triggerEnrichmentWithReset() {
 		log.Println("[ENRICH] WARNING: Timer not initialized yet, skipping")
 		return
 	}
-	loadDataFromCachedResponses()
+	loadDataFromAllCachedPageResponses()
 	// Next enrichment will run 600 seconds (10 minutes) after the last one finishes
 	// regardless of if you manually execute it or if the timer executes it.
 	resetEnrichmentTimerLocked(enrichmentInterval)
@@ -135,7 +135,7 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 	}
 
 	// After storing the page in memory, we can trigger the enrichment process immediately
-	triggerEnrichmentWithReset()
+	loadDataFromSingleCachedPageResponse(pageNum, requestType)
 }
 
 // This function will take a global slice, a mutex, and an integer
@@ -149,36 +149,66 @@ func ClearCachedPageDataAbovePageNum(responseCache map[int]ResponseCache, reques
 	}
 }
 
-// LoadDataFromCachedResponses processes the JSON data stored in the in-memory maps and merges it into the global stations and priceStations slices and indexes for enrichment
-func loadDataFromCachedResponses() {
-	log.Println("[ENRICH] Loading data from in-memory cached responses for enrichment")
+func loadDataFromSingleCachedPageResponse(pageNum int, requestType RequestType) {
+	var cache ResponseCache
+	var exists bool
 
-	// Load price data from in-memory cache
-	savedPricesPagesMutex.Lock()
-	log.Printf("[ENRICH] Found %d cached price pages in memory", len(savedPricesPages))
-	for pageNum, cache := range savedPricesPages {
-		priceStationsList, err := processJSONArray[PriceStation](cache.Data, pageNum, "price")
+	switch requestType {
+	case RequestTypeStationsPage:
+		savedStationsPagesMutex.Lock()
+		cache, exists = savedStationsPages[pageNum]
+		savedStationsPagesMutex.Unlock()
+	case RequestTypePricesPage:
+		savedPricesPagesMutex.Lock()
+		cache, exists = savedPricesPages[pageNum]
+		savedPricesPagesMutex.Unlock()
+	default:
+		log.Printf("[ENRICH] Invalid request type %s for loading cached page data", requestType)
+		return
+	}
+
+	if !exists {
+		log.Printf("[ENRICH] No cached data found in memory for page %d of type %s", pageNum, requestType)
+		return
+	}
+
+	log.Printf("[ENRICH] Loading data from SINGLE cached response for page %d of type %s", pageNum, requestType)
+
+	switch requestType {
+	case RequestTypeStationsPage:
+		stationList, err := processJSONArray[Station](cache.Data, pageNum, RequestTypeStationsPage)
+		if err != nil {
+			log.Printf("[ENRICH] Error processing cached station data for page %d: %v", pageNum, err)
+			return
+		}
+		mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
+		mergeStationLocations(stationList)
+	case RequestTypePricesPage:
+		priceStationsList, err := processJSONArray[PriceStation](cache.Data, pageNum, RequestTypePricesPage)
 		if err != nil {
 			log.Printf("[ENRICH] Error processing cached price data for page %d: %v", pageNum, err)
-			continue
+			return
 		}
 		mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
 	}
-	savedPricesPagesMutex.Unlock()
+}
+
+// LoadDataFromCachedResponses processes the JSON data stored in the in-memory maps and merges it into the global stations and priceStations slices and indexes for enrichment
+func loadDataFromAllCachedPageResponses() {
+	log.Println("[ENRICH] Loading data from ALL in-memory cached responses for enrichment")
+
+	// Load price data from in-memory cache
+	log.Printf("[ENRICH] Found %d cached price pages in memory", len(savedPricesPages))
+	for pageNum, _ := range savedPricesPages {
+		loadDataFromSingleCachedPageResponse(pageNum, RequestTypePricesPage)
+	}
 
 	// Load station data from in-memory cache
 	savedStationsPagesMutex.Lock()
 	log.Printf("[ENRICH] Found %d cached station pages in memory", len(savedStationsPages))
-	for pageNum, cache := range savedStationsPages {
-		stationList, err := processJSONArray[Station](cache.Data, pageNum, "station")
-		if err != nil {
-			log.Printf("[ENRICH] Error processing cached station data for page %d: %v", pageNum, err)
-			continue
-		}
-		mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
-		mergeStationLocations(stationList)
+	for pageNum := range savedStationsPages {
+		loadDataFromSingleCachedPageResponse(pageNum, RequestTypeStationsPage)
 	}
-	savedStationsPagesMutex.Unlock()
 }
 
 // NodeIDEntity interface for entities that have a NodeID field
@@ -223,25 +253,3 @@ func mergeStationLocations(newStations []Station) {
 		}
 	}
 }
-
-/*
-// Merges fuel prices from newPriceStations into the priceStations slice and index
-func mergeFuelPrices(newPriceStations []PriceStation) {
-	priceStationsMutex.Lock()
-	defer priceStationsMutex.Unlock()
-
-	for _, newPriceStation := range newPriceStations {
-		nodeID := newPriceStation.NodeID
-		if _, exists := priceStationsIndex[nodeID]; !exists {
-			priceStationsIndex[nodeID] = len(priceStations)
-			priceStations = append(priceStations, newPriceStation)
-		} else {
-			// If the station already exists, we can choose to update the price information if needed
-			existingIndex := priceStationsIndex[nodeID]
-			priceStations[existingIndex].DieselPrice = newPriceStation.DieselPrice
-			priceStations[existingIndex].Petrol95Price = newPriceStation.Petrol95Price
-			priceStations[existingIndex].Petrol98Price = newPriceStation.Petrol98Price
-		}
-	}
-}
-*/
