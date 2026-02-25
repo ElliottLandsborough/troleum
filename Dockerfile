@@ -36,11 +36,20 @@ RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
 #RUN go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
-FROM alpine:latest
+# PROD
+#FROM alpine:latest
+# DEV - we need debian for debugging tools and to avoid musl issues
+FROM debian:bookworm-slim
 
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+# Create a non-root user to run the app securely (alpine syntax)
+#RUN addgroup -g 1000 appuser && \
+#    adduser -D -u 1000 -G appuser appuser
+
+# Create non-root user (Debian syntax)
+RUN groupadd -g 1000 appuser && \
+    useradd -u 1000 -g appuser -s /bin/bash -m appuser
+# Install CA certificates for HTTPS requests
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
