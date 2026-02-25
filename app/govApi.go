@@ -197,6 +197,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage, nodeIdCount)
 
 	// Save the page to JSON file (for debug purposes, not used for enrichment)
+	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
 	filePath, err = savePageJSON(bodyString, pageNum, "stations")
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
