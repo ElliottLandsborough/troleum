@@ -22,11 +22,20 @@ type PriceStationResponse struct {
 	Data    []PriceStation `json:"data"`
 }
 
-// writeJSONPretty writes data as pretty-printed JSON
+// writeJSONPretty writes data as pretty-printed JSON when in debug mode
 func writeJSONPretty(w http.ResponseWriter, data interface{}) error {
 	w.Header().Set("Content-Type", "application/json")
-	// For minified output, use: jsonData, err := json.Marshal(data)
-	jsonData, err := json.MarshalIndent(data, "", "  ")
+
+	if debug {
+		jsonData, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(jsonData)
+		return err
+	}
+
+	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,8 @@
-# Use an official Go image as the builder
-FROM golang:1.25-alpine AS builder
+# Dev with more debug packages
+FROM golang:1.26 AS builder
+
+# Produce a smaller image for production
+#FROM golang:1.26-alpine AS builder
 
 # Create app directory
 WORKDIR /app
@@ -11,10 +14,12 @@ RUN go mod download
 # Copy the rest of the source code
 COPY app/config.go /app/
 COPY app/database.go /app/
+COPY app/debug.go /app/
 COPY app/govApi.go /app/
 COPY app/json.go /app/
 COPY app/main.go /app/
 COPY app/memory.go /app/
+COPY app/nodebug.go /app/
 COPY app/prices.go /app/
 COPY app/queue.go /app/
 COPY app/stations.go /app/
@@ -24,11 +29,11 @@ COPY app/webServer.go /app/
 RUN ls -alh /app
 
 # Build the binary (without debug optimizations)
-#RUN go build -o main .
+RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
 
 # Build the binary with production optimizations
-ENV CGO_ENABLED=0
-RUN go build -ldflags="-s -w" -trimpath -o main .
+#ENV CGO_ENABLED=0
+#RUN go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
 FROM alpine:latest
