@@ -41,9 +41,6 @@ func main() {
 	// enrich memory from json files on startup
 	loadDataFromJSONFiles()
 
-	// Start web server for saved pages
-	StartWebServer(ctx)
-
 	// load the .env file manually
 	if err := loadDotEnv(".env"); err != nil {
 		fmt.Println("Warning: could not load .env file:", err)
@@ -51,6 +48,10 @@ func main() {
 
 	cfg := LoadConfig()
 
+	// Start web server for saved pages
+	StartWebServer(ctx)
+
+	// Create OAuth client
 	client := NewOAuthClient(
 		"https://www.fuel-finder.service.gov.uk/api/v1/oauth/generate_access_token",
 		cfg.ClientID,
