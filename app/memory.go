@@ -294,8 +294,18 @@ func removeMissingNodeIDs(nodeIds []string) {
 
 	log.Printf("[CLEANUP] Node ID count from cached pages: %d", len(nodeIdSet))
 
+	// Call separate functions to avoid holding multiple locks simultaneously
+	removeStationsNotInSet(nodeIdSet)
+	removePriceStationsNotInSet(nodeIdSet)
+	removeStationLocationsNotInSet(nodeIdSet)
+
+	log.Printf("[CLEANUP] Finished removing missing stations. Current station count: %d", len(stations))
+}
+
+func removeStationsNotInSet(nodeIdSet map[string]struct{}) {
 	stationsMutex.Lock()
 	defer stationsMutex.Unlock()
+
 	if len(stations) != len(nodeIdSet) {
 		newStations := make([]Station, 0, 100000)
 		newStationsIndex := make(map[string]int, 100000)
@@ -311,9 +321,12 @@ func removeMissingNodeIDs(nodeIds []string) {
 		stations = newStations
 		stationsIndex = newStationsIndex
 	}
+}
 
+func removePriceStationsNotInSet(nodeIdSet map[string]struct{}) {
 	priceStationsMutex.Lock()
 	defer priceStationsMutex.Unlock()
+
 	if len(priceStations) != len(nodeIdSet) {
 		newPriceStations := make([]PriceStation, 0, 100000)
 		newPriceStationsIndex := make(map[string]int, 100000)
@@ -329,9 +342,12 @@ func removeMissingNodeIDs(nodeIds []string) {
 		priceStations = newPriceStations
 		priceStationsIndex = newPriceStationsIndex
 	}
+}
 
+func removeStationLocationsNotInSet(nodeIdSet map[string]struct{}) {
 	stationLocationsMutex.Lock()
 	defer stationLocationsMutex.Unlock()
+
 	if len(stationLocations) != len(nodeIdSet) {
 		log.Printf("[CLEANUP] Current station locations count before removal: %d", len(stationLocations))
 		newStationLocations := make(map[string]LatLon, 100000)
@@ -343,8 +359,6 @@ func removeMissingNodeIDs(nodeIds []string) {
 		log.Printf("[CLEANUP] New station locations count after removal: %d", len(newStationLocations))
 		stationLocations = newStationLocations
 	}
-
-	log.Printf("[CLEANUP] Finished removing missing stations. Current station count: %d", len(stations))
 }
 
 // Merges station locations from newStations into the stationLocations map
