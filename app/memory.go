@@ -46,7 +46,7 @@ var enrichmentTimer *time.Timer
 var enrichmentTimerMutex sync.Mutex
 
 // enrichmentInterval is the duration between automatic enrichments
-const enrichmentInterval = 10 * time.Minute
+const enrichmentInterval = 60 * time.Minute
 
 // Reset the enrichment timer with a new duration, ensuring thread safety
 func resetEnrichmentTimerLocked(d time.Duration) {
@@ -195,20 +195,65 @@ func loadDataFromSingleCachedPageResponse(pageNum int, requestType RequestType) 
 
 // LoadDataFromCachedResponses processes the JSON data stored in the in-memory maps and merges it into the global stations and priceStations slices and indexes for enrichment
 func loadDataFromAllCachedPageResponses() {
+	removeMissingStations()
+
 	log.Println("[ENRICH] Loading data from ALL in-memory cached responses for enrichment")
 
+	// Collect price page numbers while locked to avoid race condition
+	savedPricesPagesMutex.Lock()
+	pricePageNums := make([]int, 0, len(savedPricesPages))
+	for pageNum := range savedPricesPages {
+		pricePageNums = append(pricePageNums, pageNum)
+	}
+	log.Printf("[ENRICH] Found %d cached price pages in memory", len(pricePageNums))
+	savedPricesPagesMutex.Unlock()
+
 	// Load price data from in-memory cache
-	log.Printf("[ENRICH] Found %d cached price pages in memory", len(savedPricesPages))
-	for pageNum, _ := range savedPricesPages {
+	for _, pageNum := range pricePageNums {
 		loadDataFromSingleCachedPageResponse(pageNum, RequestTypePricesPage)
 	}
 
-	// Load station data from in-memory cache
+	// Collect station page numbers while locked to avoid race condition
 	savedStationsPagesMutex.Lock()
-	log.Printf("[ENRICH] Found %d cached station pages in memory", len(savedStationsPages))
+	stationPageNums := make([]int, 0, len(savedStationsPages))
 	for pageNum := range savedStationsPages {
+		stationPageNums = append(stationPageNums, pageNum)
+	}
+	log.Printf("[ENRICH] Found %d cached station pages in memory", len(stationPageNums))
+	savedStationsPagesMutex.Unlock()
+
+	// Load station data from in-memory cache
+	for _, pageNum := range stationPageNums {
 		loadDataFromSingleCachedPageResponse(pageNum, RequestTypeStationsPage)
 	}
+}
+
+func removeMissingStations() {
+	nodeIds := make([]string, 0)
+
+	log.Printf("[CLEANUP] Collecting node IDs from cached price pages to identify which stations are still active.")
+
+	// Snapshot the price pages while locked to avoid race condition
+	savedPricesPagesMutex.Lock()
+	pricePagesCopy := make(map[int]ResponseCache)
+	for pageNum, cache := range savedPricesPages {
+		pricePagesCopy[pageNum] = cache
+	}
+	savedPricesPagesMutex.Unlock()
+
+	// Process snapshot outside the lock
+	for pageNum, cache := range pricePagesCopy {
+		stationList, err := processJSONArray[Station](cache.Data, pageNum, RequestTypeStationsPage)
+		if err != nil {
+			log.Printf("[ENRICH] Error processing cached station data for page %d during index reset: %v", pageNum, err)
+			continue
+		}
+		for _, station := range stationList {
+			nodeIds = append(nodeIds, station.NodeID)
+		}
+	}
+
+	removeMissingNodeIDs(nodeIds)
 }
 
 // NodeIDEntity interface for entities that have a NodeID field
@@ -238,6 +283,68 @@ func mergeEntities[T NodeIDEntity](newEntities []T, globalSlice *[]T, globalInde
 			*globalSlice = append(*globalSlice, entity)
 		}
 	}
+}
+
+// Generic function that takes a slice of nodeIds and removes any stations from the global stations slice and index that are not in the provided slice of nodeIds
+func removeMissingNodeIDs(nodeIds []string) {
+	nodeIdSet := make(map[string]struct{}, len(nodeIds))
+	for _, nodeId := range nodeIds {
+		nodeIdSet[nodeId] = struct{}{}
+	}
+
+	log.Printf("[CLEANUP] Node ID count from cached pages: %d", len(nodeIdSet))
+
+	stationsMutex.Lock()
+	defer stationsMutex.Unlock()
+	if len(stations) != len(nodeIdSet) {
+		newStations := make([]Station, 0, 100000)
+		newStationsIndex := make(map[string]int, 100000)
+
+		log.Printf("[CLEANUP] Current station count before removal: %d", len(stations))
+		for _, station := range stations {
+			if _, exists := nodeIdSet[station.NodeID]; exists {
+				newStationsIndex[station.NodeID] = len(newStations)
+				newStations = append(newStations, station)
+			}
+		}
+		log.Printf("[CLEANUP] New station count after removal: %d", len(newStations))
+		stations = newStations
+		stationsIndex = newStationsIndex
+	}
+
+	priceStationsMutex.Lock()
+	defer priceStationsMutex.Unlock()
+	if len(priceStations) != len(nodeIdSet) {
+		newPriceStations := make([]PriceStation, 0, 100000)
+		newPriceStationsIndex := make(map[string]int, 100000)
+
+		log.Printf("[CLEANUP] Current price station count before removal: %d", len(priceStations))
+		for _, priceStation := range priceStations {
+			if _, exists := nodeIdSet[priceStation.NodeID]; exists {
+				newPriceStationsIndex[priceStation.NodeID] = len(newPriceStations)
+				newPriceStations = append(newPriceStations, priceStation)
+			}
+		}
+		log.Printf("[CLEANUP] New price station count after removal: %d", len(newPriceStations))
+		priceStations = newPriceStations
+		priceStationsIndex = newPriceStationsIndex
+	}
+
+	stationLocationsMutex.Lock()
+	defer stationLocationsMutex.Unlock()
+	if len(stationLocations) != len(nodeIdSet) {
+		log.Printf("[CLEANUP] Current station locations count before removal: %d", len(stationLocations))
+		newStationLocations := make(map[string]LatLon, 100000)
+		for nodeId, location := range stationLocations {
+			if _, exists := nodeIdSet[nodeId]; exists {
+				newStationLocations[nodeId] = location
+			}
+		}
+		log.Printf("[CLEANUP] New station locations count after removal: %d", len(newStationLocations))
+		stationLocations = newStationLocations
+	}
+
+	log.Printf("[CLEANUP] Finished removing missing stations. Current station count: %d", len(stations))
 }
 
 // Merges station locations from newStations into the stationLocations map
