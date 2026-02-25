@@ -187,7 +187,7 @@ func isJSONFileRecentEnough(filePath string, maxAgeMinutes int) bool {
 }
 
 // Generic JSON processing function that handles both wrapped and direct array formats
-func processJSONArray[T any](jsonData json.RawMessage, pageNum int, dataType string) ([]T, error) {
+func processJSONArray[T any](jsonData json.RawMessage, pageNum int, dataType RequestType) ([]T, error) {
 	if len(jsonData) == 0 {
 		return nil, fmt.Errorf("no data found for page %d", pageNum)
 	}
@@ -195,7 +195,7 @@ func processJSONArray[T any](jsonData json.RawMessage, pageNum int, dataType str
 	var result []T
 
 	// First try to unmarshal as wrapped response (with "success" and "data" fields)
-	var wrappedResponse map[string]interface{}
+	var wrappedResponse map[string]any
 	err := json.Unmarshal(jsonData, &wrappedResponse)
 	if err == nil {
 		if dataArray, ok := wrappedResponse["data"]; ok {
