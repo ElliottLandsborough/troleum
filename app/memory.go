@@ -77,7 +77,7 @@ func initEnrichmentTimer(ctx context.Context) {
 					enrichmentTimer.Stop()
 				}
 				enrichmentTimerMutex.Unlock()
-				log.Println("Enrichment worker stopped")
+				log.Println("[ENRICH] Enrichment worker stopped")
 				return
 			}
 		}
