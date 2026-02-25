@@ -176,17 +176,16 @@ func isJSONFileRecentEnough(filePath string, maxAgeMinutes int) bool {
 }
 
 // Generic JSON processing function that handles both wrapped and direct array formats
-func processJSONArray[T any](jsonData string, pageNum int, dataType string) ([]T, error) {
-	if jsonData == "" {
+func processJSONArray[T any](jsonData json.RawMessage, pageNum int, dataType string) ([]T, error) {
+	if len(jsonData) == 0 {
 		return nil, fmt.Errorf("no data found for page %d", pageNum)
 	}
 
-	rawMessage := json.RawMessage(jsonData)
 	var result []T
 
 	// First try to unmarshal as wrapped response (with "success" and "data" fields)
 	var wrappedResponse map[string]interface{}
-	err := json.Unmarshal(rawMessage, &wrappedResponse)
+	err := json.Unmarshal(jsonData, &wrappedResponse)
 	if err == nil {
 		if dataArray, ok := wrappedResponse["data"]; ok {
 			// Re-marshal the data array and unmarshal into our result
@@ -201,13 +200,12 @@ func processJSONArray[T any](jsonData string, pageNum int, dataType string) ([]T
 	}
 
 	// If wrapped response fails, try to unmarshal as direct array
-	err = json.Unmarshal(rawMessage, &result)
+	err = json.Unmarshal(jsonData, &result)
 	if err != nil {
-		dataLen := len(jsonData)
-		preview := jsonData
-		// todo: why is this 200 here and there are mixed 200/100 elsewhere? are they linked?
-		if dataLen > 200 {
-			preview = jsonData[:200] + "..."
+		preview := string(jsonData)
+		dataLen := len(preview)
+		if dataLen > JSONPreviewLength {
+			preview = preview[:JSONPreviewLength] + "..."
 		}
 		return nil, fmt.Errorf("error unmarshalling %s data for page %d: %v (data length: %d, preview: %s)",
 			dataType, pageNum, err, dataLen, preview)
@@ -215,34 +213,6 @@ func processJSONArray[T any](jsonData string, pageNum int, dataType string) ([]T
 
 	return result, nil
 }
-
-// ProcessJSONFromAnywhere - public function to process JSON data from anywhere in the app
-/*
-func ProcessJSONFromAnywhere(jsonData string, dataType string) error {
-	switch strings.ToLower(dataType) {
-	case "stations", "station":
-		stationList, err := processJSONArray[Station](jsonData, 0, "station")
-		if err != nil {
-			return err
-		}
-		mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
-		mergeStationLocations(stationList)
-		return nil
-
-	case "prices", "price":
-		priceStationsList, err := processJSONArray[PriceStation](jsonData, 0, "price")
-		if err != nil {
-			return err
-		}
-		mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
-		//mergeFuelPrices(priceStationsList)
-		return nil
-
-	default:
-		return fmt.Errorf("unknown data type: %s (supported: stations, prices)", dataType)
-	}
-}
-*/
 
 func getPricesPageFilePath(pageNum int) string {
 	return "json/prices_page_" + strconv.Itoa(pageNum) + ".json"

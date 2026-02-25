@@ -148,22 +148,6 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 	return nil
 }
 
-/*
-// RawStationsResponse represents the raw response from the API when fetching station data.
-type RawStationsResponse struct {
-	StatusCode uint16
-	Data       json.RawMessage
-	CreatedAt  time.Time
-}
-
-// RawPricesResponse represents the raw response from the API when fetching price station data.
-type RawPricesResponse struct {
-	StatusCode uint16
-	Data       json.RawMessage
-	CreatedAt  time.Time
-}
-*/
-
 func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
 	// We only just cached this 60 minutes ago, so skip if within that time
 	filePath := filepath.Join("json", fmt.Sprintf("stations_page_%d.json", pageNum))
@@ -178,10 +162,10 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 
 			if nodeIdCount > 0 {
 				log.Printf("[STATIONS] Caching page %d from existing file into memory", pageNum)
-				StoreJSONPageInMemory(pageNum, contentString, RequestTypeStationsPage)
+				StoreJSONPageInMemory(pageNum, contentString, RequestTypeStationsPage, nodeIdCount)
 			}
 
-			return nodeIdCount < 500
+			return nodeIdCount < NodeIDCountThreshold
 		}
 		// If we can't read the file, assume it's not the last page to be safe
 		return false
@@ -233,7 +217,7 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 
 	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
-	StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage)
+	StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage, nodeIdCount)
 
 	// Save the page to JSON file (for debug purposes, not used for enrichment)
 	filePath, err = savePageJSON(bodyString, pageNum, "stations")
@@ -251,8 +235,8 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, bodyString, errorMessage)
 	log.Printf("[STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
-	// Return true if this page has less than 500 node_ids (last page)
-	if nodeIdCount < 500 {
+	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
+	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[STATIONS] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
 		return true
 	}
@@ -274,10 +258,10 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 
 			if nodeIdCount > 0 {
 				log.Printf("[PRICES] Caching page %d from existing file into memory", pageNum)
-				StoreJSONPageInMemory(pageNum, contentString, RequestTypePricesPage)
+				StoreJSONPageInMemory(pageNum, contentString, RequestTypePricesPage, nodeIdCount)
 			}
 
-			return nodeIdCount < 500
+			return nodeIdCount < NodeIDCountThreshold
 		}
 		// If we can't read the file, assume it's not the last page to be safe
 		return false
@@ -329,7 +313,7 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 
 	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
 
-	StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage)
+	StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage, nodeIdCount)
 
 	// Save the page to JSON file (for debug purposes, not used for enrichment)
 	filePath, err = savePageJSON(bodyString, pageNum, "prices")
@@ -347,8 +331,8 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, bodyString, errorMessage)
 	log.Printf("[PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
-	// Return true if this page has less than 500 node_ids (last page)
-	if nodeIdCount < 500 {
+	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
+	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[PRICES] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
 		return true
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -12,8 +13,8 @@ type LatLon struct {
 }
 
 type ResponseCache struct {
-	CreatedAt time.Time // timestamp
-	Data      string    // unlimited JSON string
+	CreatedAt time.Time       // timestamp
+	Data      json.RawMessage // unlimited JSON string
 }
 
 // a map with the key node_id and the value LatLon
@@ -37,9 +38,14 @@ var savedStationsPagesMutex sync.Mutex
 var savedPricesPagesMutex sync.Mutex
 
 // StoreJSONPageInMemory saves the raw JSON string of a page into the appropriate in-memory map for later enrichment
-func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestType) {
+func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestType, nodeIdCount int) {
+	if nodeIdCount == 0 {
+		log.Printf("[CACHE] ERROR: No node_id occurrences in current page %d of type %s, skipping caching in memory.", pageNum, requestType)
+		return
+	}
+
 	cache := ResponseCache{
-		Data:      jsonString,
+		Data:      json.RawMessage(jsonString),
 		CreatedAt: time.Now(),
 	}
 
@@ -47,11 +53,31 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 	case RequestTypeStationsPage:
 		savedStationsPagesMutex.Lock()
 		savedStationsPages[pageNum] = cache
+		if nodeIdCount < NodeIDCountThreshold {
+			log.Printf("[CACHE] WARNING: Page %d of type %s has a low node_id count of %d", pageNum, requestType, nodeIdCount)
+			ClearCachedPageDataAbovePageNum(savedStationsPages, requestType, pageNum)
+		}
+
 		savedStationsPagesMutex.Unlock()
 	case RequestTypePricesPage:
 		savedPricesPagesMutex.Lock()
 		savedPricesPages[pageNum] = cache
+		if nodeIdCount < NodeIDCountThreshold {
+			log.Printf("[CACHE] WARNING: Page %d of type %s has a low node_id count of %d", pageNum, requestType, nodeIdCount)
+			ClearCachedPageDataAbovePageNum(savedPricesPages, requestType, pageNum)
+		}
 		savedPricesPagesMutex.Unlock()
+	}
+}
+
+// This function will take a global slice, a mutex, and an integer
+func ClearCachedPageDataAbovePageNum(responseCache map[int]ResponseCache, requestType RequestType, pageNum int) {
+	log.Printf("[CACHE] Clearing cached page data above page %d of type %s due to low node_id count", pageNum, requestType)
+	for key := range responseCache {
+		if key > pageNum {
+			delete(responseCache, key)
+			log.Printf("[CACHE] Deleted cached page %d of type %s from memory as it's higher than current page %d of type %s", key, requestType, pageNum, requestType)
+		}
 	}
 }
 
@@ -114,60 +140,6 @@ func mergeEntities[T NodeIDEntity](newEntities []T, globalSlice *[]T, globalInde
 			*globalSlice = append(*globalSlice, entity)
 		}
 	}
-}
-
-// List the current json files, if they exist, into the savedStationsPages and savedPricesPages maps
-func enrichSavedPages() {
-	/*
-		// Process price data
-		priceResponses, err := GetFullDataForEnrichment(RequestTypePricesPage, 100)
-		if err != nil {
-			log.Printf("[ENRICH] Error getting full price data for enrichment: %v", err)
-		}
-
-		for _, req := range priceResponses {
-			pageNum := req.PageNumber
-			createdAt := req.CreatedAt
-			savedPricesPages[pageNum] = ResponseCache{
-				Data:      req.Data,
-				CreatedAt: createdAt,
-			}
-
-			priceStationsList, err := processJSONArray[PriceStation](req.Data, pageNum, "price")
-			if err != nil {
-				log.Printf("[ENRICH] %v", err)
-				continue
-			}
-
-			mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
-		}
-
-		// Process station data
-		stationRequests, err := GetFullDataForEnrichment(RequestTypeStationsPage, 100)
-		if err != nil {
-			log.Printf("[ENRICH] Error getting full station data for enrichment: %v", err)
-		}
-
-		for _, req := range stationRequests {
-			pageNum := req.PageNumber
-			createdAt := req.CreatedAt
-			savedStationsPages[pageNum] = ResponseCache{
-				Data:      req.Data,
-				CreatedAt: createdAt,
-			}
-
-			stationList, err := processJSONArray[Station](req.Data, pageNum, "station")
-			if err != nil {
-				log.Printf("[ENRICH] %v", err)
-				continue
-			}
-
-			mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
-
-			// an 'array' of stations with their lat lon locations only
-			mergeStationLocations(stationList)
-		}
-	*/
 }
 
 // Merges station locations from newStations into the stationLocations map

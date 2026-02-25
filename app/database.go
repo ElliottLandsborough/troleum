@@ -10,6 +10,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// todo: do we even need the database?
+
 // Database connection
 var db *sql.DB
 var dbMutex sync.Mutex

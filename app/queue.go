@@ -192,7 +192,7 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 	nodeIdCount := strings.Count(bodyString, "node_id")
 	if nodeIdCount > 0 {
 		log.Printf("[RETRY-STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
-		StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage)
+		StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage, nodeIdCount)
 	} else {
 		log.Printf("[RETRY-STATIONS] Page %d contains no node_id occurrences", pageNum)
 	}
@@ -257,7 +257,7 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	nodeIdCount := strings.Count(bodyString, "node_id")
 	if nodeIdCount > 0 {
 		log.Printf("[RETRY-PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
-		StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage)
+		StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage, nodeIdCount)
 	} else {
 		log.Printf("[RETRY-PRICES] Page %d contains no node_id occurrences", pageNum)
 	}

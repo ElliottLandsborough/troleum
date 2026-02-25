@@ -17,11 +17,10 @@ const (
 	RequestTypeStationsPage RequestType = "stations_page"
 	RequestTypePricesPage   RequestType = "prices_page"
 	JSONPreviewLength                   = 100 // Limit for previewing JSON data in logs and database
+	NodeIDCountThreshold                = 500 // Threshold for considering a page to be 'full' of data
 )
 
-// todo:
-// 2. cached data from files is loaded but not saved to memory, the json files are separate from the db, and possibly useless. do we need the cached data in files at all? could we just save the raw response to the db and load from there for the enrich function? or is it useful to have the json files as a backup/cache?
-// 3. work out what order the data is saved and retreived in
+// main is the entry point of the application
 func main() {
 	// Initialize database connection
 	if err := InitDatabase(); err != nil {
@@ -36,15 +35,16 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// Start enriching saved pages on a 15-second timer
+	// Async enrich data from caches responses
 	go func() {
-		ticker := time.NewTicker(15 * time.Second)
+		// Create a ticker to run the enrichment every 60 seconds
+		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
 
-		// Run enrichSavedPages immediately on startup
+		// Run immediately on startup
 		loadDataFromCachedResponses()
 
-		// Then run it every 15 seconds
+		// Then run on each tick (see the timer above)
 		for {
 			select {
 			case <-ticker.C:
