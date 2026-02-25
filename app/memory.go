@@ -42,6 +42,20 @@ var savedPricesPagesMutex sync.Mutex
 var enrichmentTimer *time.Timer
 var enrichmentTimerMutex sync.Mutex
 
+// Reset the enrichment timer with a new duration, ensuring thread safety
+func resetEnrichmentTimerLocked(d time.Duration) {
+	if enrichmentTimer == nil {
+		return
+	}
+	if !enrichmentTimer.Stop() {
+		select {
+		case <-enrichmentTimer.C:
+		default:
+		}
+	}
+	enrichmentTimer.Reset(d)
+}
+
 // InitEnrichmentTimer initializes the enrichment timer that triggers loading data from cached responses
 func initEnrichmentTimer(ctx context.Context) {
 	enrichmentTimer = time.NewTimer(60 * time.Second)
@@ -53,7 +67,9 @@ func initEnrichmentTimer(ctx context.Context) {
 				triggerEnrichmentWithReset()
 			case <-ctx.Done():
 				enrichmentTimerMutex.Lock()
-				enrichmentTimer.Stop()
+				if enrichmentTimer != nil {
+					enrichmentTimer.Stop()
+				}
 				enrichmentTimerMutex.Unlock()
 				log.Println("Enrichment worker stopped")
 				return
@@ -75,7 +91,9 @@ func triggerEnrichmentWithReset() {
 		return
 	}
 	loadDataFromCachedResponses()
-	enrichmentTimer.Reset(600 * time.Second) // Resets timer to 10 minutes
+	// Next enrichment will run 600 seconds (10 minutes) after the last one finishes
+	// regardless of if you manually execute it or if the timer executes it.
+	resetEnrichmentTimerLocked(600 * time.Second)
 }
 
 // StoreJSONPageInMemory saves the raw JSON string of a page into the appropriate in-memory map for later enrichment
