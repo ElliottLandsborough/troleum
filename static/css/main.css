@@ -1,0 +1,209 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    height: 100vh;
+}
+
+#map {
+    width: 80%;
+    height: 100%;
+    height: calc(100% - 64px);
+}
+
+#info {
+    width: 20%;
+    height: 100%;
+    height: calc(100% - 64px);
+    float: right;
+    padding: 0;
+    border-left: 1px solid #ccc;
+}
+
+#info #location-sorter {
+    padding-top: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+#info #location-sorter p {
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+#info #location-sorter select {
+    padding: 5px;
+    font-size: 20px;
+    width: 100%;
+    line-height: 64px;
+    height: 64px;
+}
+
+#info #location-list {
+    height: calc(100% - 64px);
+    margin-top: 0;
+    overflow-y: scroll;
+}
+
+#info #location-list .location-list-placeholder {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+}
+
+#info #location-list .location-list-placeholder p {
+    font-size: 16px;
+}
+
+#info #location-list tr th {
+    text-align: left;
+    display: none;
+}
+
+#info #location-list .distance .title {
+    display: none;
+}
+
+#info #location-list hr {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 10px 0;
+    text-align: left;
+}
+
+#info #location-list table {
+    width: 100%;
+}
+
+#info #location-list .prices-title {
+    display: none;
+}
+
+#info #location-list table tr td, #info #location-list table tr th {
+    padding-right: 8px;
+}
+
+#info #location-list .location-list-item:not(:last-child) {
+    margin-bottom: 10px;
+}
+
+#info #location-list .location-list-item:hover {
+    background-color: #f0f0f0;
+}
+
+#info #location-list .location-list-item.is-selected {
+    background-color: #ffe2b8;
+    border-color: #f39c12;
+    box-shadow: inset 0 0 0 1px #f39c12;
+}
+
+#info #location-list .location-list-item {
+    border: 1px solid #eee;
+    border-radius: 5px;
+    margin: 10px;
+    background-color: #fafafa;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    padding: 4px;
+}
+
+#info #location-list .location-list-item h3 {
+    margin-bottom: 5px;
+    color: #1a73e8;
+    font-size: 16px;
+}
+
+.info-window {
+    padding: 10px;
+    max-width: 200px;
+}
+
+.info-window h3 {
+    margin: 0 5px 8px 0;
+    color: #1a73e8;
+    font-size: 16px;
+}
+
+.info-window p {
+    margin: 4px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.info-window .description {
+    color: #666;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.info-window table {
+    margin-top: 8px;
+}
+
+.info-window table tr th {
+    text-align: left;
+}
+
+.info-window table tr td {
+    padding-top: 3px;
+}
+
+.info-window table tr td, .info-window table tr th {
+    padding-right: 5px;
+}
+
+.gm-style-iw-chr {
+    height: 0px;
+}
+
+.top-nav {
+    height: 64px;
+}
+
+.top-nav #location-input {
+    height: 64px;
+    /*width: calc(100% - 64px - 64px - 64px);*/
+    width: calc(100% - 64px - 64px);
+    font-size: 20px;
+    line-height: 64px;
+    padding: 20px;
+    float: left;
+}
+
+.top-nav #my-location {
+    height: 64px;
+    width: 64px;
+    font-size: 24px;
+    line-height: 64px;
+    cursor: pointer;
+    float: left;
+}
+
+.top-nav #search-mode-toggle {
+    height: 64px;
+    width: 64px;
+    font-size: 24px;
+    line-height: 64px;
+    cursor: pointer;
+    float: left;
+}
+
+.top-nav #menu-toggle {
+    height: 64px;
+    width: 64px;
+    cursor: pointer;
+    float: left;
+    line-height: 64px;
+    padding-top: 8px;
+    display: none;
+}
+
+.top-nav #menu-toggle svg {
+    width: 45px;
+    height: 45px;
+}
