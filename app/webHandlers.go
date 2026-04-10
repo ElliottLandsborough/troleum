@@ -68,7 +68,7 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		foundStationsWithFuelType := false
 		for _, ft := range fuelTypes {
 			if ft == fuelType {
-				stationsToBeReturned = filterStationsByFuelType(stations, fuelType)
+				stationsToBeReturned = filterStationsByFuelType(stationsToBeReturned, fuelType)
 				log.Printf("Found %d stations with fuel type %s", len(stationsToBeReturned), fuelType)
 				foundStationsWithFuelType = true
 				break
@@ -228,11 +228,16 @@ func formatStationName(s Station) string {
 }
 
 func getStationPrices(s Station) []FuelPrice {
+	priceStationsMutex.Lock()
+	defer priceStationsMutex.Unlock()
+
 	priceStation, exists := priceStationsIndex[s.NodeID]
 	if !exists {
 		return nil
 	}
-	return priceStations[priceStation].FuelPrices
+
+	// Return a copy so callers cannot observe or mutate the shared backing array.
+	return append([]FuelPrice(nil), priceStations[priceStation].FuelPrices...)
 }
 
 func formatStationAddress(s Station) string {
