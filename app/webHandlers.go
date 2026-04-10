@@ -252,7 +252,7 @@ func formatStationPrices(s Station) string {
 
 func formatStationAddress(s Station) string {
 	parts := []string{}
-	for _, p := range []string{s.Location.AddressLine1, s.Location.AddressLine2, s.Location.City, s.Location.Country, s.Location.County, s.Location.Postcode} {
+	for _, p := range []string{s.Location.AddressLine1, s.Location.AddressLine2, s.Location.City, s.Location.County, s.Location.Postcode} {
 		if p != "" {
 			parts = append(parts, p)
 		}
