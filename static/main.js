@@ -619,7 +619,7 @@ function renderStationInfo(pins) {
         <div class="location-list-item" data-marker-id="${escapeHtml(String(pin.id))}">
             <h3>${pin.name}</h3>
             <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p>
-            <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table>
+            <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td class="price-label">${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td class="price-value">${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table>
         </div>
     `;
     }).join('<hr>');

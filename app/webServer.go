@@ -77,28 +77,17 @@ func setupWebServer() *http.Server {
 	mux.Handle("/api/fuel-types", noStore(http.HandlerFunc(fuelTypesAPIHandler)))
 
 	// ----------------------
-	// Static asset routes
-	// ----------------------
-	jsFS := http.FileServer(http.Dir("static/js"))
-	cssFS := http.FileServer(http.Dir("static/css"))
-	imgFS := http.FileServer(http.Dir("static/img"))
-
-	mux.Handle("/js/",
-		cacheAssets(
-			http.StripPrefix("/js/", jsFS)))
-
-	mux.Handle("/css/",
-		cacheAssets(
-			http.StripPrefix("/css/", cssFS)))
-
-	mux.Handle("/img/",
-		cacheAssets(
-			http.StripPrefix("/img/", imgFS)))
-
-	// ----------------------
 	// Root (index.html)
 	// ----------------------
 	mux.HandleFunc("/", rootHandler)
+
+	// /main.css and /main.js are the new paths for the built assets, so we can serve them directly from the static directory with caching
+	mux.Handle("/main.css", cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/main.css")
+	})))
+	mux.Handle("/main.js", cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/main.js")
+	})))
 
 	return &http.Server{
 		Addr:    "0.0.0.0:8080",
