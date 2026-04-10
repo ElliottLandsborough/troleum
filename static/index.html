@@ -83,12 +83,30 @@
             text-align: left;
         }
 
+        #info #location-list table {
+            width: 100%;
+        }
+
+        #info #location-list .prices-title {
+            display: none;
+        }
+
+        #info #location-list table tr td, #info #location-list table tr th {
+            padding-right: 8px;
+        }
+
         #info #location-list .location-list-item:not(:last-child) {
             margin-bottom: 10px;
         }
 
         #info #location-list .location-list-item:hover {
             background-color: #f0f0f0;
+        }
+
+        #info #location-list .location-list-item.is-selected {
+            background-color: #ffe2b8;
+            border-color: #f39c12;
+            box-shadow: inset 0 0 0 1px #f39c12;
         }
 
         #info #location-list .location-list-item {
@@ -98,6 +116,7 @@
             background-color: #fafafa;
             cursor: pointer;
             transition: background-color 0.2s ease;
+            padding: 4px;
         }
 
         #info #location-list .location-list-item h3 {
@@ -246,6 +265,7 @@
         ];
         let isFollowingMyLocation = true;
         let pendingFollowMeLocationRequest = false;
+        let selectedStationMarkerId = null;
 
         function updateFollowMeUI() {
             const btn = document.getElementById('my-location');
@@ -554,6 +574,29 @@
             return `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(addressText)}</a>`;
         }
 
+        function updateSelectedLocationListItem(markerId) {
+            selectedStationMarkerId = markerId == null ? null : String(markerId);
+
+            document.querySelectorAll('#location-list .location-list-item').forEach(item => {
+                item.classList.toggle('is-selected', item.dataset.markerId === selectedStationMarkerId);
+            });
+        }
+
+        function openStationInfoWindow(markerId) {
+            const normalizedMarkerId = String(markerId);
+            const marker = markersById.get(normalizedMarkerId);
+            const infoWindow = infoWindowsById.get(normalizedMarkerId);
+
+            if (!marker || !infoWindow) {
+                return;
+            }
+
+            infoWindowsById.forEach(iw => iw.close());
+            updateSelectedLocationListItem(normalizedMarkerId);
+            map.panTo(marker.getPosition());
+            infoWindow.open(map, marker);
+        }
+
         function initMap() {
             // Create map centered on the world
             map = new google.maps.Map(document.getElementById('map'), {
@@ -729,6 +772,10 @@
                     marker.setMap(null);
                     markersById.delete(id);
 
+                    if (selectedStationMarkerId === id) {
+                        selectedStationMarkerId = null;
+                    }
+
                     const infoWindow = infoWindowsById.get(id);
                     if (infoWindow) {
                         infoWindow.close();
@@ -747,7 +794,7 @@
                     <div class="info-window">
                         <h3>${pin.name}</h3><br />
                         <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p><br />
-                        <div class="prices">⛽ Prices:</div>
+                        <div class="prices-header">⛽ Prices:</div>
                         <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table><br />
                         <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
                         <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p>
@@ -780,9 +827,12 @@
                     content: infoContent
                 });
 
+                infoWindow.addListener('closeclick', function() {
+                    updateSelectedLocationListItem(null);
+                });
+
                 marker.addListener('click', function() {
-                    infoWindowsById.forEach(iw => iw.close());
-                    infoWindow.open(map, marker);
+                    openStationInfoWindow(id);
                 });
 
                 bounds.extend(marker.getPosition());
@@ -812,16 +862,23 @@
                 const sortedPrices = getSortedPrices(pin.prices);
 
                 return `
-                <div class="location-list-item">
+                <div class="location-list-item" data-marker-id="${escapeHtml(String(pin.id))}">
                     <h3>${pin.name}</h3>
                     <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p>
-                    <div class="prices">⛽ Prices:</div>
                     <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table>
                 </div>
             `;
             }).join('<hr>');
 
             infoDiv.innerHTML = stationInfoHtml;
+
+            infoDiv.querySelectorAll('.location-list-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    openStationInfoWindow(item.dataset.markerId);
+                });
+            });
+
+            updateSelectedLocationListItem(selectedStationMarkerId);
         }
 
         // Function to get the user's current location and center the map on it
