@@ -299,6 +299,19 @@
             return fuelTypesPromise;
         }
 
+        function getFuelTypeLabel(fuelType) {
+            const labels = {
+                E10: 'Petrol (E10)',
+                E5: 'Premium Petrol (E5)',
+                B7_STANDARD: 'Diesel (B7)',
+                B7_PREMIUM: 'Premium Diesel (B7)',
+                HVO: 'Renewable Diesel (HVO)',
+                B10: 'Diesel (B10)',
+            };
+
+            return labels[fuelType] || fuelType;
+        }
+
         function escapeHtml(text) {
             return String(text)
                 .replace(/&/g, '&amp;')
@@ -514,7 +527,7 @@
                     <div class="info-window">
                         <h3>${pin.name}</h3><br />
                         <p><strong>${pin.city}</strong></p><br />
-                        <p class="prices">⛽ Fuel Prices:<br /><table><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${pin.prices ? pin.prices.map(p => `<tr><td>${p.fuel_type}</td><td>${p.price}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table></p><br />
+                        <p class="prices">⛽ Fuel Prices:<br /><table><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${pin.prices ? pin.prices.map(p => `<tr><td>${escapeHtml(getFuelTypeLabel(p.fuel_type))}</td><td>${p.price}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table></p><br />
                         <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
                         <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p><br />
                     </div>
@@ -574,7 +587,7 @@
             const stationInfoHtml = pinList.map(pin => `
                 <div class="info-window">
                     <h3>${pin.name}</h3>
-                    <p class="prices">⛽ Fuel Prices:<br />${pin.prices ? pin.prices.map(p => `${p.fuel_type}: ${p.price}`).join('<br>') : 'No price data available'}</p><br />
+                    <p class="prices">⛽ Fuel Prices:<br />${pin.prices ? pin.prices.map(p => `${escapeHtml(getFuelTypeLabel(p.fuel_type))}: ${p.price}`).join('<br>') : 'No price data available'}</p><br />
                 </div>
             `).join('<hr>');
 
