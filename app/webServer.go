@@ -37,6 +37,24 @@ func cacheAssets(next http.Handler) http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=86400")
 		}
 
+		// Explicit MIME types avoid platform-dependent fallbacks like text/plain.
+		switch ext {
+		case ".css":
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		case ".js":
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		case ".svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		case ".jpg", ".jpeg":
+			w.Header().Set("Content-Type", "image/jpeg")
+		case ".gif":
+			w.Header().Set("Content-Type", "image/gif")
+		case ".webp":
+			w.Header().Set("Content-Type", "image/webp")
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -47,24 +65,6 @@ func setupWebServer() *http.Server {
 	// ----------------------
 	// API routes (no caching)
 	// ----------------------
-
-	// Get saved stations/prices PAGES from database. All pages returned
-	mux.Handle("/admin/saved-stations-pages", noStore(http.HandlerFunc(savedStationsHandler)))
-	mux.Handle("/admin/saved-prices-pages", noStore(http.HandlerFunc(savedPricesHandler)))
-
-	// Get database stats - todo: more stats like total requests, total successful, success rate, etc
-	// todo: estimated total stations/prices based on: db, memory
-	// todo: response:200 count per page, non:200 count per page
-	mux.Handle("/admin/db-stats", noStore(http.HandlerFunc(dbStatsHandler)))
-
-	// Get the 10 most recent successful stations/prices PAGES requests (with optional ?limit= query param)
-	mux.Handle("/admin/recent-stations", noStore(http.HandlerFunc(recentStationsHandler)))
-	mux.Handle("/admin/recent-prices", noStore(http.HandlerFunc(recentPricesHandler)))
-
-	// Get the most recent successful stations/prices PAGE request
-	// (just the latest page fetched successfully, but the data field might be 500 stations or prices)
-	mux.Handle("/admin/latest-station-page", noStore(http.HandlerFunc(latestStationPageHandler)))
-	mux.Handle("/admin/latest-price-page", noStore(http.HandlerFunc(latestPricePageHandler)))
 
 	// get all stations, with pagination, from memory
 	// ?page = 1,2,3... (default 1)
