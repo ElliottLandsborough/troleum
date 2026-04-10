@@ -28,12 +28,17 @@
             height: calc(100% - 64px);
             float: right;
             overflow-y: scroll;
-            padding: 20px;
+            padding: 0;
             background-color: #ff7070;
         }
 
-        #info #location-list {
+        #info #location-sorder {
+            height: 64px;
+        }
 
+        #info #location-list {
+            height: calc(100% - 64px);
+            margin-top: 0;
         }
 
         .info-window {
@@ -135,12 +140,11 @@
             <select id="sort-options">
                 <option value="distance">Distance</option>
                 <option value="price">Price</option>
-                <option value="name">Name</option>
             </select>
             <p>Display fuel type:</p>
             <select id="fuel-options">
                 <option value="all">All</option>
-                <option value="average">Average</option>
+                
             </select>
         </div>
         <div id="location-list">
@@ -161,6 +165,9 @@
         let infoWindowsById = new Map();
         let debounceTimer = null;
         let abortController = null;
+        let userLat = null;
+        let userLng = null;
+        const USER_MARKER_Z_INDEX = 1000000;
 
         function preloadFuelTypes() {
             if (fuelTypesPromise) {
@@ -184,6 +191,41 @@
             return fuelTypesPromise;
         }
 
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getMapsUrl(lat, lng, label) {
+            const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const encodedLabel = encodeURIComponent(label || `${lat},${lng}`);
+
+            if (isIOS) {
+                return `https://maps.apple.com/?ll=${lat},${lng}&q=${encodedLabel}`;
+            }
+
+            if (isAndroid) {
+                return `geo:${lat},${lng}?q=${lat},${lng}(${encodedLabel})`;
+            }
+
+            return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        }
+
+        function buildAddressLinkHtml(pin) {
+            const addressText = pin.address || 'No address available';
+            if (pin.lat == null || pin.lng == null) {
+                return escapeHtml(addressText);
+            }
+
+            const mapsUrl = getMapsUrl(pin.lat, pin.lng, pin.name || addressText);
+            return `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(addressText)}</a>`;
+        }
+
         function initMap() {
             // Create map centered on the world
             map = new google.maps.Map(document.getElementById('map'), {
@@ -192,6 +234,41 @@
                 mapTypeControl: true,
                 streetViewControl: false
             });
+
+            // Constantly update a blue dot on the map showing the user's current location, and center the map on it when the page loads
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition((position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    // Cache latest coordinates for station API requests.
+                    userLat = lat;
+                    userLng = lon;
+
+                    // Create or update a marker for the user's location
+                    if (!markersById.has('user-location')) {
+                        const userMarker = new google.maps.Marker({
+                            position: { lat, lng: lon },
+                            map: map,
+                            title: 'Your Location',
+                            zIndex: USER_MARKER_Z_INDEX,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 8,
+                                fillColor: '#4285F4',
+                                fillOpacity: 1,
+                                strokeColor: '#ffffff',
+                                strokeWeight: 2,
+                            },
+                        });
+                        markersById.set('user-location', userMarker);
+                    } else {
+                        const userMarker = markersById.get('user-location');
+                        userMarker.setPosition({ lat, lng: lon });
+                        userMarker.setZIndex(USER_MARKER_Z_INDEX);
+                    }
+                });
+            }
 
             // Fire-and-forget preload: starts immediately but never blocks map/markers rendering.
             preloadFuelTypes().then(() => {
@@ -206,27 +283,18 @@
             map.addListener('idle', () => {
                 clearTimeout(debounceTimer);
 
-                const stationsUrl = new URL('/api/stations', window.location.origin);
-                // get the current lat lon from the browser's geolocation API, and if the user allows it, use those coordinates to fetch stations data from the server, otherwise fetch stations data without coordinates
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition((position) => {
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-                        console.log(`User allowed geolocation, fetching stations data with coordinates: ${lat}, ${lon}`);
-                        stationsUrl.searchParams.set('lat', lat);
-                        stationsUrl.searchParams.set('lng', lon);
-                    }, (error) => {
-                        console.warn(`User denied geolocation or an error occurred (${error.message}), fetching stations data without coordinates`);
-                    });
-                } else {
-                    console.warn('Geolocation is not supported by this browser, fetching stations data without coordinates');
+                const url = new URL('/api/stations', window.location.origin);
+                // Use last known user location from watchPosition if available.
+                if (userLat != null && userLng != null) {
+                    url.searchParams.set('lat', userLat);
+                    url.searchParams.set('lng', userLng);
                 }
 
                 const bounds = map.getBounds();
                 const ne = bounds.getNorthEast();
                 const sw = bounds.getSouthWest();
 
-                stationsUrl.searchParams.set('bbox', `${sw.lat()},${sw.lng()},${ne.lat()},${ne.lng()}`);
+                url.searchParams.set('bbox', `${sw.lat()},${sw.lng()},${ne.lat()},${ne.lng()}`);
 
                 debounceTimer = setTimeout(async () => {
                     // Cancel any previous in-flight request
@@ -234,7 +302,7 @@
                     abortController = new AbortController();
 
                     try {
-                        const res = await fetch(stationsUrl, { signal: abortController.signal });
+                        const res = await fetch(url, { signal: abortController.signal });
                         const pins = await res.json();
                         latestPins = pins;
                         renderPins(pins);
@@ -245,35 +313,6 @@
                     }
                 }, 200);
             });
-
-            // Constantly update a blue dot on the map showing the user's current location, and center the map on it when the page loads
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition((position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-
-                    // Create or update a marker for the user's location
-                    if (!markersById.has('user-location')) {
-                        const userMarker = new google.maps.Marker({
-                            position: { lat, lng: lon },
-                            map: map,
-                            title: 'Your Location',
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                scale: 8,
-                                fillColor: '#4285F4',
-                                fillOpacity: 1,
-                                strokeColor: '#ffffff',
-                                strokeWeight: 2,
-                            },
-                        });
-                        markersById.set('user-location', userMarker);
-                    } else {
-                        const userMarker = markersById.get('user-location');
-                        userMarker.setPosition({ lat, lng: lon });
-                    }
-                });
-            }
 
             const input = document.getElementById("location-input");
 
@@ -356,7 +395,7 @@
                         <h3>${pin.name}</h3><br />
                         <p><strong>${pin.city}</strong></p><br />
                         <p class="prices">⛽ Fuel Prices:<br /><table><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${pin.prices ? pin.prices.map(p => `<tr><td>${p.fuel_type}</td><td>${p.price}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table></p><br />
-                        <p class="address">📍 Address:<br />${pin.address || 'No address available'}</p><br />
+                        <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
                         <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p><br />
                     </div>
                 `;
@@ -406,7 +445,7 @@
 
         // Create a table of station information in the info div on the right side of the screen, based on the latest pins data from the server
         function renderStationInfo(pins) {
-            const infoDiv = document.getElementById('info');
+            const infoDiv = document.getElementById('location-list');
             const pinList = Array.isArray(pins?.data) ? pins.data : [];
 
             if (pinList.length === 0) {
@@ -417,7 +456,7 @@
             const stationInfoHtml = pinList.map(pin => `
                 <div class="info-window">
                     <h3>${pin.name}</h3>
-                    <p class="prices">⛽ Fuel Prices:<br />${pin.prices ? pin.prices.map(p => `${p.fuel_type}: ${p.price}`).join('<br>') : 'No price data available'}</p>
+                    <p class="prices">⛽ Fuel Prices:<br />${pin.prices ? pin.prices.map(p => `${p.fuel_type}: ${p.price}`).join('<br>') : 'No price data available'}</p><br />
                 </div>
             `).join('<hr>');
 
@@ -434,10 +473,14 @@
         // Function to get the user's current location and center the map on it
         function centerMapOnUserLocation() {
             if (navigator.geolocation) {
+                console.log('Attempting to get user location via Geolocation API...');
                 navigator.geolocation.getCurrentPosition((position) => {
+                    console.log('User location obtained:', position.coords.latitude, position.coords.longitude);
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
+                    console.log('Centering map on user location...');
                     map.setCenter({ lat, lng: lon });
+                    console.log('Setting map zoom level to 14...');
                     map.setZoom(14);
 
                     // update the location input with the user's current location using reverse geocoding
