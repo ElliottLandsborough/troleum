@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: petroleum_app
+    container_name: troleum_app
     ports:
       - "8080:8080"
     environment:

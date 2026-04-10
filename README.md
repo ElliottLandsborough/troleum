@@ -1,4 +1,10 @@
-# Howto
+# troleum
+
+Website: https://troleum.org
+
+Gets petrol station locations and prices from https://www.gov.uk/government/collections/fuel-finder and presents them in a relatively easy to use interface
+
+## Howto
 
 ## Option 1: Manual Docker + Local Go
 ```

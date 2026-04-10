@@ -1,8 +1,8 @@
 # Name of the Docker image
-IMAGE_NAME = petroleum:latest
+IMAGE_NAME = troleum:latest
 
 # App container name
-APP_CONTAINER_NAME = petroleum_app
+APP_CONTAINER_NAME = troleum_app
 
 # Binary name
 BINARY = main
@@ -57,7 +57,7 @@ logs:
 # View app logs only
 .PHONY: logs-app
 logs-app:
-	docker logs -f petroleum_app
+	docker logs -f troleum_app
 
 # Stop all services
 .PHONY: stop
@@ -69,14 +69,15 @@ stop:
 # save docker image to file for distribution
 .PHONY: save-image
 save-image:
-	docker save -o petroleum_image.tar $(IMAGE_NAME)
+	docker save -o troleum_image.tar $(IMAGE_NAME)
 
 # send docker image to remote server over scp
 .PHONY: send-image
 send-image:
-	scp petroleum_image.tar petroleum:/root/petroleum_image.tar
+	scp troleum_image.tar troleum:/root/troleum_image.tar
+	scp .env troleum:/root/.env
 
 # execute image on remote server
 .PHONY: run-remote
 run-remote:
-	ssh petroleum "docker load -i /root/petroleum_image.tar && docker run -d -p 8080:8080 -v /root/json:/app/json --name petroleum_app -e OAUTH_CLIENT_ID -e OAUTH_CLIENT_SECRET $(IMAGE_NAME)"
+	ssh troleum "docker load -i /root/troleum_image.tar && docker run -d -p 8080:8080 -v /root/json:/app/json --name troleum_app -e OAUTH_CLIENT_ID -e OAUTH_CLIENT_SECRET $(IMAGE_NAME)"
