@@ -182,13 +182,15 @@ func formattedStationsForJS(stations []Station) []map[string]interface{} {
 	formatted := make([]map[string]interface{}, len(stations))
 	for i, s := range stations {
 		formatted[i] = map[string]interface{}{
-			"id":          s.NodeID,
-			"name":        formatStationName(s),
-			"lat":         s.Location.Latitude,
-			"lng":         s.Location.Longitude,
-			"city":        s.Location.City,
-			"description": formatStationDescription(s),
-			"type":        "landmark",
+			"id":      s.NodeID,
+			"name":    formatStationName(s),
+			"lat":     s.Location.Latitude,
+			"lng":     s.Location.Longitude,
+			"city":    s.Location.City,
+			"type":    "landmark",
+			"prices":  getStationPrices(s),
+			"address": formatStationAddress(s),
+			"phone":   s.PublicPhoneNumber,
 		}
 	}
 	return formatted
@@ -214,6 +216,7 @@ func formatStationName(s Station) string {
 	return fmt.Sprintf("%s - %s", s.BrandName, s.TradingName)
 }
 
+/*
 func formatStationDescription(s Station) string {
 	var parts []string
 
@@ -235,16 +238,26 @@ func formatStationDescription(s Station) string {
 
 	return strings.Join(parts, "<br />\n")
 }
+*/
 
-func formatStationPrices(s Station) string {
+func getStationPrices(s Station) []FuelPrice {
 	priceStation, exists := priceStationsIndex[s.NodeID]
-	if !exists || len(priceStations[priceStation].FuelPrices) == 0 {
+	if !exists {
+		return nil
+	}
+	return priceStations[priceStation].FuelPrices
+}
+
+/*
+func formatStationPrices(s Station) string {
+	prices := getStationPrices(s)
+	if len(prices) == 0 {
 		return ""
 	}
 
 	var parts []string
 
-	for _, price := range priceStations[priceStation].FuelPrices {
+	for _, price := range prices {
 		parts = append(parts, fmt.Sprintf("<tr><td>%s</td><td>%.3f</td></tr>", price.FuelType, price.Price))
 	}
 
@@ -254,6 +267,7 @@ func formatStationPrices(s Station) string {
 
 	return fmt.Sprintf("<table><tr><th>Fuel Type</th><th>Price</th></tr>%s</table>", strings.Join(parts, "\n"))
 }
+*/
 
 func formatStationAddress(s Station) string {
 	parts := []string{}

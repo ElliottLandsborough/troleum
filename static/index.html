@@ -353,9 +353,11 @@
                 if (id === 'user-location') return; // never overwrite the user location marker
                 const infoContent = `
                     <div class="info-window">
-                        <h3>${pin.name}</h3>
-                        <p><strong>${pin.city}</strong></p>
-                        <div class="description">${pin.description}</div>
+                        <h3>${pin.name}</h3><br />
+                        <p><strong>${pin.city}</strong></p><br />
+                        <p class="prices">⛽ Fuel Prices:<br /><table><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${pin.prices ? pin.prices.map(p => `<tr><td>${p.fuel_type}</td><td>${p.price}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table></p><br />
+                        <p class="address">📍 Address:<br />${pin.address || 'No address available'}</p><br />
+                        <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p><br />
                     </div>
                 `;
 
@@ -415,122 +417,11 @@
             const stationInfoHtml = pinList.map(pin => `
                 <div class="info-window">
                     <h3>${pin.name}</h3>
-                    <p><strong>${pin.city}</strong></p>
-                    <div class="description">${pin.description}</div>
+                    <p class="prices">⛽ Fuel Prices:<br />${pin.prices ? pin.prices.map(p => `${p.fuel_type}: ${p.price}`).join('<br>') : 'No price data available'}</p>
                 </div>
             `).join('<hr>');
 
             infoDiv.innerHTML = stationInfoHtml;
-        }
-
-        function fetchMarkers() {
-            // get the current lat lon from the browser's geolocation API, and if the user allows it, use those coordinates to fetch stations data from the server, otherwise fetch stations data without coordinates
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition((position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    console.log(`User allowed geolocation, fetching stations data with coordinates: ${lat}, ${lon}`);
-                    fetchUrl += `?lat=${lat}&lon=${lon}`;
-                }, (error) => {
-                    console.warn(`User denied geolocation or an error occurred (${error.message}), fetching stations data without coordinates`);
-                });
-            } else {
-                console.warn('Geolocation is not supported by this browser, fetching stations data without coordinates');
-            }
-
-            // Fetch stations data from the server
-            fetch(fetchUrl)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.code === 200 && data.data) {
-                        locations = data.data.map(station => ({
-                            id: station.id,
-                            name: station.name,
-                            lat: station.lat,
-                            lng: station.lng,
-                            city: station.city,
-                            description: station.description,
-                            type: station.type
-                        }));
-                        // Clear existing markers
-                        clearMarkers();
-
-                        // Create bounds to fit all markers
-                        const bounds = new google.maps.LatLngBounds();
-
-                        let locationCount = locations.length;
-                        console.log(`Fetched ${locationCount} stations from the server`);
-
-                        // Add markers for each location
-                        locations.forEach((location) => {
-                            addMarker(location, bounds);
-                        });
-
-                        // Fit map to show all markers
-                        //map.fitBounds(bounds);
-                    } else {
-                        console.error('Failed to load stations data:', data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching stations data:', error);
-                });
-        }
-
-        function addMarker(location, bounds) {
-            // Create marker
-            const marker = new google.maps.Marker({
-                position: { lat: location.lat, lng: location.lng },
-                map: map,
-                title: location.name,
-                animation: google.maps.Animation.DROP
-            });
-
-            // Create info window content
-            const infoContent = `
-                <div class="info-window">
-                    <h3>${location.name}</h3>
-                    <p><strong>${location.city}</strong></p>
-                    <p class="description">${location.description}</p>
-                </div>
-            `;
-
-            // Create info window
-            const infoWindow = new google.maps.InfoWindow({
-                content: infoContent
-            });
-
-            // Add click listener to marker
-            marker.addListener('click', function() {
-                // Close all other info windows
-                infoWindows.forEach(iw => iw.close());
-                
-                // Open this info window
-                infoWindow.open(map, marker);
-            });
-
-            // Extend bounds to include this marker
-            bounds.extend(marker.getPosition());
-
-            // Store references
-            markers.push(marker);
-            infoWindows.push(infoWindow);
-        }
-
-        // Helper function to add a new location dynamically
-        function addNewLocation(locationData) {
-            const bounds = new google.maps.LatLngBounds();
-            
-            // Extend bounds with existing markers
-            markers.forEach(marker => {
-                bounds.extend(marker.getPosition());
-            });
-
-            // Add new marker
-            addMarker(locationData, bounds);
-
-            // Fit map to show all markers
-            map.fitBounds(bounds);
         }
 
         // Helper function to show/hide markers
