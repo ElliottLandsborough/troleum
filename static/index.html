@@ -166,12 +166,9 @@
 
     <script>
         let map;
-        let markers = [];
-        let locations = [];
         let fuelTypes = [];
         let fuelTypesPromise = null;
         let latestPins = null;
-        let infoWindows = [];
         let markersById = new Map();
         let infoWindowsById = new Map();
         let debounceTimer = null;
@@ -180,8 +177,6 @@
         let userLng = null;
         const USER_MARKER_Z_INDEX = 1000000;
         let isFollowingMyLocation = true;
-        let searchLocationLat = null;
-        let searchLocationLng = null;
         let pendingFollowMeLocationRequest = false;
 
         function updateFollowMeUI() {
@@ -236,8 +231,6 @@
 
         function setFollowMeMode() {
             isFollowingMyLocation = true;
-            searchLocationLat = null;
-            searchLocationLng = null;
             document.getElementById('location-input').value = '';
             document.getElementById('location-input').placeholder = 'Enter a location';
 
@@ -254,8 +247,6 @@
 
         function setSearchLocationMode(lat, lng) {
             isFollowingMyLocation = false;
-            searchLocationLat = lat;
-            searchLocationLng = lng;
 
             markersById.forEach((marker, id) => {
                 if (id === 'user-location') {
@@ -492,19 +483,6 @@
             centerMapOnUserLocation();
         }
 
-        function syncMarkerCollections() {
-            markers = Array.from(markersById.values());
-            infoWindows = Array.from(infoWindowsById.values());
-        }
-
-        function clearMarkers() {
-            markersById.forEach(marker => marker.setMap(null));
-            infoWindowsById.forEach(infoWindow => infoWindow.close());
-            markersById.clear();
-            infoWindowsById.clear();
-            syncMarkerCollections();
-        }
-
         function renderPins(pins) {
             const pinList = Array.isArray(pins?.data) ? pins.data : [];
             console.log(`Fetched ${pinList.length} pins from the server`);
@@ -579,8 +557,6 @@
                 infoWindowsById.set(id, infoWindow);
             });
 
-            syncMarkerCollections();
-
             // Fit map to show all markers
             //map.fitBounds(bounds);
         }
@@ -603,13 +579,6 @@
             `).join('<hr>');
 
             infoDiv.innerHTML = stationInfoHtml;
-        }
-
-        // Helper function to show/hide markers
-        function setMarkersVisible(visible) {
-            markers.forEach(marker => {
-                marker.setVisible(visible);
-            });
         }
 
         // Function to get the user's current location and center the map on it
