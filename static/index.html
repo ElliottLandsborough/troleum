@@ -27,7 +27,7 @@
         }
 
         .info-window h3 {
-            margin: 0 0 8px 0;
+            margin: 0 5px 8px 0;
             color: #1a73e8;
             font-size: 16px;
         }
@@ -42,6 +42,26 @@
             color: #666;
             font-size: 13px;
             margin-top: 8px;
+        }
+
+        .info-window table {
+            margin-top: 8px;
+        }
+
+        .info-window table tr th {
+            text-align: left;
+        }
+
+        .info-window table tr td {
+            padding-top: 3px;
+        }
+
+        .info-window table tr td, .info-window table tr th {
+            padding-right: 5px;
+        }
+
+        .gm-style-iw-chr {
+            height: 0px;
         }
     </style>
 </head>
@@ -109,7 +129,7 @@
                     if (err.name === 'AbortError') return; // expected, ignore
                         console.error(err);
                     }
-                }, 400);
+                }, 200);
             });
         }
 
@@ -154,7 +174,7 @@
                     <div class="info-window">
                         <h3>${pin.name}</h3>
                         <p><strong>${pin.city}</strong></p>
-                        <p class="description">${pin.description}</p>
+                        <div class="description">${pin.description}</div>
                     </div>
                 `;
 

@@ -212,18 +212,42 @@ func formatStationName(s Station) string {
 func formatStationDescription(s Station) string {
 	var parts []string
 
-	// Add telephone if not blank
-	if s.PublicPhoneNumber != "" {
-		parts = append(parts, fmt.Sprintf("📞 <a href=\"tel:%s\">%s</a>", s.PublicPhoneNumber, s.PublicPhoneNumber))
+	prices := formatStationPrices(s)
+	if prices != "" {
+		parts = append(parts, "<p>⛽ Fuel Prices:<br /></p>"+prices)
 	}
 
 	// Add address if not blank
 	address := formatStationAddress(s)
 	if address != "" {
-		parts = append(parts, fmt.Sprintf("📍 %s", address))
+		parts = append(parts, fmt.Sprintf("<p>📍 Address:<br />%s</p>", address))
+	}
+
+	// Add telephone if not blank
+	if s.PublicPhoneNumber != "" {
+		parts = append(parts, fmt.Sprintf("<p>📞 Telephone:<br /><a href=\"tel:%s\">%s</a></p>", s.PublicPhoneNumber, s.PublicPhoneNumber))
 	}
 
 	return strings.Join(parts, "<br />\n")
+}
+
+func formatStationPrices(s Station) string {
+	priceStation, exists := priceStationsIndex[s.NodeID]
+	if !exists || len(priceStations[priceStation].FuelPrices) == 0 {
+		return ""
+	}
+
+	var parts []string
+
+	for _, price := range priceStations[priceStation].FuelPrices {
+		parts = append(parts, fmt.Sprintf("<tr><td>%s</td><td>%.3f</td></tr>", price.FuelType, price.Price))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("<table><tr><th>Fuel Type</th><th>Price</th></tr>%s</table>", strings.Join(parts, "\n"))
 }
 
 func formatStationAddress(s Station) string {
