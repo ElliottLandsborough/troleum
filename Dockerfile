@@ -47,7 +47,7 @@ FROM debian:bookworm-slim
 # Create non-root user (Debian syntax)
 RUN groupadd -g 1000 appuser && \
     useradd -u 1000 -g appuser -s /bin/bash -m appuser
-# Install CA certificates for HTTPS requests
+# Install CA certificates for HTTPS requests (Debian only, not needed in alpine since it's included in the base image)
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
