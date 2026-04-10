@@ -27,18 +27,83 @@
             height: 100%;
             height: calc(100% - 64px);
             float: right;
-            overflow-y: scroll;
             padding: 0;
-            background-color: #ff7070;
+            border-left: 1px solid #ccc;
         }
 
-        #info #location-sorder {
+        #info #location-sorter {
+            padding-top: 10px;
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+
+        #info #location-sorter p {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        #info #location-sorter select {
+            padding: 5px;
+            font-size: 20px;
+            width: 100%;
+            line-height: 64px;
             height: 64px;
         }
 
         #info #location-list {
             height: calc(100% - 64px);
             margin-top: 0;
+            overflow-y: scroll;
+        }
+
+        #info #location-list .location-list-placeholder {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+        }
+
+        #info #location-list .location-list-placeholder p {
+            font-size: 16px;
+        }
+
+        #info #location-list tr th {
+            text-align: left;
+            display: none;
+        }
+
+        #info #location-list .distance .title {
+            display: none;
+        }
+
+        #info #location-list hr {
+            border: none;
+            border-top: 1px solid #eee;
+            margin: 10px 0;
+            text-align: left;
+        }
+
+        #info #location-list .location-list-item:not(:last-child) {
+            margin-bottom: 10px;
+        }
+
+        #info #location-list .location-list-item:hover {
+            background-color: #f0f0f0;
+        }
+
+        #info #location-list .location-list-item {
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin: 10px;
+            background-color: #fafafa;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        #info #location-list .location-list-item h3 {
+            margin-bottom: 5px;
+            color: #1a73e8;
+            font-size: 16px;
         }
 
         .info-window {
@@ -147,14 +212,14 @@
     </div>
     <div id="info">
         <div id="location-sorter">
-            <p>Sort by:</p>
             <select id="sort-options">
-                <option value="distance">Distance</option>
-                <option value="price">Price</option>
+                <option value="distance">Distance (order by)</option>
             </select>
         </div>
         <div id="location-list">
-            <p>Loading stations...</p>
+            <div class="location-list-placeholder">
+                <p>Loading stations...</p>
+            </div>
         </div>
     </div>
     <div id="map"></div>
@@ -343,6 +408,117 @@
             return [...prices].sort((left, right) => compareFuelTypes(left.fuel_type, right.fuel_type));
         }
 
+        function getFuelPriceForType(pin, fuelType) {
+            if (!Array.isArray(pin?.prices)) {
+                return null;
+            }
+
+            const matchingPrice = pin.prices.find(price => price?.fuel_type === fuelType);
+            if (!matchingPrice) {
+                return null;
+            }
+
+            const numericPrice = Number(matchingPrice.price);
+            return Number.isFinite(numericPrice) ? numericPrice : null;
+        }
+
+        function getSortedPinsForSelection(pinList) {
+            const sortValue = document.getElementById('sort-options')?.value || 'distance';
+            if (sortValue === 'distance') {
+                return pinList;
+            }
+
+            return [...pinList].sort((left, right) => {
+                const leftPrice = getFuelPriceForType(left, sortValue);
+                const rightPrice = getFuelPriceForType(right, sortValue);
+
+                if (leftPrice == null && rightPrice == null) {
+                    return String(left.name || '').localeCompare(String(right.name || ''));
+                }
+
+                if (leftPrice == null) {
+                    return 1;
+                }
+
+                if (rightPrice == null) {
+                    return -1;
+                }
+
+                return leftPrice - rightPrice;
+            });
+        }
+
+        function getSelectedFuelSortValue() {
+            const selectedValue = document.getElementById('sort-options')?.value || 'distance';
+            return selectedValue === 'distance' ? null : selectedValue;
+        }
+
+        function getFuelTypeLabelHtml(fuelType, selectedFuelType) {
+            const label = escapeHtml(getFuelTypeLabel(fuelType));
+            if (selectedFuelType && selectedFuelType === fuelType) {
+                return `<strong>${label}</strong>`;
+            }
+
+            return label;
+        }
+
+        function getFuelPriceHtml(fuelType, price, selectedFuelType) {
+            const safePrice = escapeHtml(String(price));
+            if (selectedFuelType && selectedFuelType === fuelType) {
+                return `<strong>${safePrice}</strong>`;
+            }
+
+            return safePrice;
+        }
+
+        function getDistanceHtml(distance, isDistanceSelected) {
+            const valueText = distance != null ? `${distance.toFixed(2)} mile` : 'N/A';
+            const safeValueText = escapeHtml(valueText);
+
+            if (isDistanceSelected) {
+                return `<strong><span class="title">📏 Distance: </span>${safeValueText}</strong>`;
+            }
+
+            return `<span class="title">📏 Distance: </span>${safeValueText}`;
+        }
+
+        function updateSortOptionsFromPins(pinList) {
+            const sortSelect = document.getElementById('sort-options');
+            const previousValue = sortSelect.value || 'distance';
+
+            const uniqueFuelTypes = new Set();
+            pinList.forEach(pin => {
+                if (!Array.isArray(pin.prices)) {
+                    return;
+                }
+
+                pin.prices.forEach(price => {
+                    if (price?.fuel_type) {
+                        uniqueFuelTypes.add(price.fuel_type);
+                    }
+                });
+            });
+
+            const sortedFuelTypes = [...uniqueFuelTypes].sort(compareFuelTypes);
+
+            sortSelect.innerHTML = '';
+
+            const distanceOption = document.createElement('option');
+            distanceOption.value = 'distance';
+            distanceOption.textContent = 'Distance (order by)';
+            sortSelect.appendChild(distanceOption);
+
+            sortedFuelTypes.forEach(fuelType => {
+                const option = document.createElement('option');
+                option.value = fuelType;
+                option.textContent = getFuelTypeLabel(fuelType);
+                sortSelect.appendChild(option);
+            });
+
+            const hasPreviousOption = previousValue === 'distance' || uniqueFuelTypes.has(previousValue);
+            sortSelect.value = hasPreviousOption ? previousValue : 'distance';
+        }
+
         function escapeHtml(text) {
             return String(text)
                 .replace(/&/g, '&amp;')
@@ -472,6 +648,14 @@
             });
 
             const input = document.getElementById("location-input");
+            const sortSelect = document.getElementById('sort-options');
+
+            sortSelect.addEventListener('change', () => {
+                if (latestPins) {
+                    renderPins(latestPins);
+                    renderStationInfo(latestPins);
+                }
+            });
 
             const autocomplete = new google.maps.places.Autocomplete(input);
 
@@ -530,6 +714,10 @@
         function renderPins(pins) {
             const pinList = Array.isArray(pins?.data) ? pins.data : [];
             console.log(`Fetched ${pinList.length} pins from the server`);
+            const selectedFuelType = getSelectedFuelSortValue();
+            const isDistanceSelected = selectedFuelType == null;
+
+            updateSortOptionsFromPins(pinList);
 
             const nextIds = new Set(pinList.map(pin => String(pin.id)));
 
@@ -558,10 +746,11 @@
                 const infoContent = `
                     <div class="info-window">
                         <h3>${pin.name}</h3><br />
-                        <p><strong>${pin.city}</strong></p><br />
-                        <p class="prices">⛽ Fuel Prices:<br /><table><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${escapeHtml(getFuelTypeLabel(p.fuel_type))}</td><td>${p.price}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table></p><br />
+                        <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p><br />
+                        <div class="prices">⛽ Prices:</div>
+                        <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table><br />
                         <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
-                        <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p><br />
+                        <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p>
                     </div>
                 `;
 
@@ -610,19 +799,24 @@
         function renderStationInfo(pins) {
             const infoDiv = document.getElementById('location-list');
             const pinList = Array.isArray(pins?.data) ? pins.data : [];
+            const sortedPinList = getSortedPinsForSelection(pinList);
+            const selectedFuelType = getSelectedFuelSortValue();
+            const isDistanceSelected = selectedFuelType == null;
 
-            if (pinList.length === 0) {
+            if (sortedPinList.length === 0) {
                 infoDiv.innerHTML = '<p>No stations found in this area.</p>';
                 return;
             }
 
-            const stationInfoHtml = pinList.map(pin => {
+            const stationInfoHtml = sortedPinList.map(pin => {
                 const sortedPrices = getSortedPrices(pin.prices);
 
                 return `
-                <div class="info-window">
+                <div class="location-list-item">
                     <h3>${pin.name}</h3>
-                    <p class="prices">⛽ Fuel Prices:<br />${sortedPrices.length > 0 ? sortedPrices.map(p => `${escapeHtml(getFuelTypeLabel(p.fuel_type))}: ${p.price}`).join('<br>') : 'No price data available'}</p><br />
+                    <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p>
+                    <div class="prices">⛽ Prices:</div>
+                    <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table>
                 </div>
             `;
             }).join('<hr>');

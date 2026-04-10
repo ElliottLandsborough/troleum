@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"regexp"
@@ -121,6 +122,16 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		stationsToBeReturned = StationsByDistance(stationsToBeReturned, latFloat, lngFloat)
 
 		log.Printf("Sorted stations by distance to location (%s, %s)", lat, lng)
+
+		for i := range stationsToBeReturned {
+			s := &stationsToBeReturned[i]
+			// distance from me to station in km, using haversine formula
+			distance := haversine(latFloat, lngFloat, float64(s.Location.Latitude), float64(s.Location.Longitude))
+			// convert distance to miles, rounded to 2 decimal places. Pad with zeros if necessary to always show 2 decimal places
+			s.Distance = math.Round(distance*0.621371*100) / 100
+		}
+		log.Printf("Calculated distance for each station from location (%s, %s)", lat, lng)
+
 	} else {
 		log.Printf("No location provided, returning stations in original order")
 	}
@@ -182,15 +193,15 @@ func formattedStationsForJS(stations []Station) []map[string]interface{} {
 	formatted := make([]map[string]interface{}, len(stations))
 	for i, s := range stations {
 		formatted[i] = map[string]interface{}{
-			"id":      s.NodeID,
-			"name":    formatStationName(s),
-			"lat":     s.Location.Latitude,
-			"lng":     s.Location.Longitude,
-			"city":    s.Location.City,
-			"type":    "landmark",
-			"prices":  getStationPrices(s),
-			"address": formatStationAddress(s),
-			"phone":   s.PublicPhoneNumber,
+			"id":       s.NodeID,
+			"name":     formatStationName(s),
+			"lat":      s.Location.Latitude,
+			"lng":      s.Location.Longitude,
+			"type":     "landmark",
+			"prices":   getStationPrices(s),
+			"address":  formatStationAddress(s),
+			"phone":    s.PublicPhoneNumber,
+			"distance": s.Distance,
 		}
 	}
 	return formatted
