@@ -193,7 +193,15 @@ func loadDataFromSingleCachedPageResponse(pageNum int, requestType RequestType) 
 			log.Printf("[ENRICH] Error processing cached price data for page %d: %v", pageNum, err)
 			return
 		}
-		mergeEntities(priceStationsList, &priceStations, priceStationsIndex, &priceStationsMutex)
+
+		// Some upstream records occasionally arrive in pounds (e.g. 1.55)
+		// while most are in pence (e.g. 155.0). Normalize before merging.
+		normalizedCount := normalizePriceStationsFuelPrices(priceStationsList)
+		if normalizedCount > 0 {
+			log.Printf("[ENRICH] Page %d: normalized %d price value(s) before merge", pageNum, normalizedCount)
+		}
+
+		mergePriceStations(priceStationsList)
 	}
 }
 
@@ -286,6 +294,31 @@ func mergeEntities[T NodeIDEntity](newEntities []T, globalSlice *[]T, globalInde
 			globalIndex[nodeID] = len(*globalSlice)
 			*globalSlice = append(*globalSlice, entity)
 		}
+	}
+}
+
+// mergePriceStations upserts price stations by NodeID so newer API data replaces stale entries.
+func mergePriceStations(newPriceStations []PriceStation) {
+	priceStationsMutex.Lock()
+	defer priceStationsMutex.Unlock()
+
+	inserted := 0
+	updated := 0
+
+	for _, station := range newPriceStations {
+		if existingIdx, exists := priceStationsIndex[station.NodeID]; exists {
+			priceStations[existingIdx] = station
+			updated++
+			continue
+		}
+
+		priceStationsIndex[station.NodeID] = len(priceStations)
+		priceStations = append(priceStations, station)
+		inserted++
+	}
+
+	if inserted > 0 || updated > 0 {
+		log.Printf("[ENRICH] Upserted price stations: inserted=%d updated=%d", inserted, updated)
 	}
 }
 

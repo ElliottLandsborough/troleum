@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"time"
 )
 
@@ -19,6 +20,51 @@ type PriceStation struct {
 	PublicPhoneNumber   string      `json:"public_phone_number"`
 	TradingName         string      `json:"trading_name"`
 	FuelPrices          []FuelPrice `json:"fuel_prices"`
+}
+
+// normalizeFuelPriceValue converts values that appear to be in pounds (e.g. 1.55)
+// into pence (e.g. 155.0). Most API values are already in pence and are left unchanged.
+func normalizeFuelPriceValue(rawPrice float64) (float64, bool) {
+	if rawPrice > 0 && rawPrice < 10 {
+		// Keep one decimal place in pence where needed (e.g. 1.608 -> 160.8).
+		normalized := math.Round((rawPrice*100)*10) / 10
+		return normalized, true
+	}
+
+	return rawPrice, false
+}
+
+// normalizePriceStationsFuelPrices normalizes fuel price units across a batch of
+// price stations. It logs each conversion and a batch summary for traceability.
+func normalizePriceStationsFuelPrices(priceStationsList []PriceStation) int {
+	convertedCount := 0
+
+	for stationIdx := range priceStationsList {
+		for priceIdx := range priceStationsList[stationIdx].FuelPrices {
+			price := &priceStationsList[stationIdx].FuelPrices[priceIdx]
+			normalized, converted := normalizeFuelPriceValue(price.Price)
+			if !converted {
+				continue
+			}
+
+			log.Printf(
+				"[PRICES] Normalized price from pounds to pence: node_id=%s fuel_type=%s raw=%.3f normalized=%.1f",
+				priceStationsList[stationIdx].NodeID,
+				price.FuelType,
+				price.Price,
+				normalized,
+			)
+
+			price.Price = normalized
+			convertedCount++
+		}
+	}
+
+	if convertedCount > 0 {
+		log.Printf("[PRICES] Completed normalization: converted %d fuel price value(s) from pounds to pence", convertedCount)
+	}
+
+	return convertedCount
 }
 
 // Update the fuel types cache with the latest unique fuel types from all stations in memory
