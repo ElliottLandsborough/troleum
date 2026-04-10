@@ -20,6 +20,117 @@ const FUEL_TYPE_DISPLAY_ORDER = [
 let isFollowingMyLocation = true;
 let pendingFollowMeLocationRequest = false;
 let selectedStationMarkerId = null;
+const GOOGLE_MAPS_MAP_ID = '570b6285826fd5d96eb33627';
+
+function createMapMarkerContent(pinOptions = {}) {
+    const PinElement = google.maps.marker?.PinElement || google.maps.PinElement;
+    if (typeof PinElement !== 'function') {
+        return null;
+    }
+
+    const pin = new PinElement(pinOptions);
+    return pin || null;
+}
+
+function createMapMarker({ map, position, title, zIndex, pinOptions, legacyOptions = {} }) {
+    const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement || google.maps.AdvancedMarkerElement;
+
+    if (typeof AdvancedMarkerElement === 'function') {
+        const marker = new AdvancedMarkerElement({
+            map,
+            position,
+            title,
+            zIndex,
+            gmpClickable: true,
+            content: createMapMarkerContent(pinOptions),
+        });
+
+        marker.__isAdvancedMarker = true;
+        marker.__defaultMap = map;
+        return marker;
+    }
+
+    return new google.maps.Marker({
+        map,
+        position,
+        title,
+        zIndex,
+        ...legacyOptions,
+    });
+}
+
+function setMarkerPosition(marker, position) {
+    if (marker?.__isAdvancedMarker) {
+        marker.position = position;
+        return;
+    }
+
+    marker?.setPosition(position);
+}
+
+function getMarkerPosition(marker) {
+    if (marker?.__isAdvancedMarker) {
+        return marker.position;
+    }
+
+    return marker?.getPosition();
+}
+
+function setMarkerTitle(marker, title) {
+    if (marker?.__isAdvancedMarker) {
+        marker.title = title;
+        return;
+    }
+
+    marker?.setTitle(title);
+}
+
+function setMarkerZIndex(marker, zIndex) {
+    if (marker?.__isAdvancedMarker) {
+        marker.zIndex = zIndex;
+        return;
+    }
+
+    marker?.setZIndex(zIndex);
+}
+
+function setMarkerVisible(marker, isVisible) {
+    if (marker?.__isAdvancedMarker) {
+        marker.map = isVisible ? marker.__defaultMap : null;
+        return;
+    }
+
+    marker?.setVisible(isVisible);
+}
+
+function removeMarker(marker) {
+    if (marker?.__isAdvancedMarker) {
+        marker.map = null;
+        return;
+    }
+
+    marker?.setMap(null);
+}
+
+function addMarkerClickListener(marker, handler) {
+    if (marker?.__isAdvancedMarker && typeof marker.addEventListener === 'function') {
+        let lastClickAt = 0;
+        const dedupedHandler = function(event) {
+            const now = Date.now();
+            if (now-lastClickAt < 75) {
+                return;
+            }
+            lastClickAt = now;
+            handler(event);
+        };
+
+        marker.addEventListener('gmp-click', dedupedHandler);
+        marker.addEventListener('click', dedupedHandler);
+        return;
+    }
+
+    marker?.addListener?.('click', handler);
+}
 
 function updateFollowMeUI() {
     const btn = document.getElementById('my-location');
@@ -347,8 +458,8 @@ function openStationInfoWindow(markerId) {
 
     infoWindowsById.forEach(iw => iw.close());
     updateSelectedLocationListItem(normalizedMarkerId);
-    map.panTo(marker.getPosition());
-    infoWindow.open(map, marker);
+    map.panTo(getMarkerPosition(marker));
+    infoWindow.open({ map, anchor: marker });
 }
 
 function initMap() {
@@ -356,8 +467,10 @@ function initMap() {
     map = new google.maps.Map(document.getElementById('map'), {
         zoom: 6,
         center: { lat: 54.23782, lng: -4.555111 },
+        mapId: GOOGLE_MAPS_MAP_ID,
         mapTypeControl: true,
-        streetViewControl: false
+        streetViewControl: false,
+        //renderingType: RenderingType.VECTOR,
     });
 
     // Constantly update a blue dot on the map showing the user's current location, and center the map on it when the page loads
@@ -372,27 +485,35 @@ function initMap() {
 
             // Create or update a marker for the user's location
             if (!markersById.has('user-location')) {
-                const userMarker = new google.maps.Marker({
+                const userMarker = createMapMarker({
                     position: { lat, lng: lon },
-                    map: map,
+                    map,
                     title: 'Your Location',
                     zIndex: USER_MARKER_Z_INDEX,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: '#4285F4',
-                        fillOpacity: 1,
-                        strokeColor: '#ffffff',
-                        strokeWeight: 2,
+                    pinOptions: {
+                        scale: 0.8,
+                        background: '#4285F4',
+                        borderColor: '#ffffff',
+                        glyphColor: '#4285F4',
+                    },
+                    legacyOptions: {
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: '#4285F4',
+                            fillOpacity: 1,
+                            strokeColor: '#ffffff',
+                            strokeWeight: 2,
+                        },
                     },
                 });
                 markersById.set('user-location', userMarker);
             } else {
                 const userMarker = markersById.get('user-location');
-                userMarker.setPosition({ lat, lng: lon });
-                userMarker.setZIndex(USER_MARKER_Z_INDEX);
+                setMarkerPosition(userMarker, { lat, lng: lon });
+                setMarkerZIndex(userMarker, USER_MARKER_Z_INDEX);
                 if (isFollowingMyLocation) {
-                    userMarker.setVisible(true);
+                    setMarkerVisible(userMarker, true);
                 }
             }
 
@@ -461,10 +582,6 @@ function initMap() {
     autocomplete.setComponentRestrictions({ country: 'uk' });
     autocomplete.setBounds(map.getBounds());
 
-    //const marker = new google.maps.Marker({
-    //    map: map,
-    //});
-
     autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace();
 
@@ -477,25 +594,33 @@ function initMap() {
         const lng = place.geometry.location.lng();
 
         if (!markersById.has('search-location')) {
-            const searchMarker = new google.maps.Marker({
+            const searchMarker = createMapMarker({
                 position: { lat, lng },
-                map: map,
+                map,
                 title: 'Search Location',
                 zIndex: 999999,
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: '#34A853',
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2,
+                pinOptions: {
+                    scale: 0.8,
+                    background: '#34A853',
+                    borderColor: '#ffffff',
+                    glyphColor: '#34A853',
+                },
+                legacyOptions: {
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: '#34A853',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                    },
                 },
             });
             markersById.set('search-location', searchMarker);
         } else {
             const searchMarker = markersById.get('search-location');
-            searchMarker.setPosition({ lat, lng });
-            searchMarker.setVisible(true);
+            setMarkerPosition(searchMarker, { lat, lng });
+            setMarkerVisible(searchMarker, true);
         }
 
         setSearchLocationMode(lat, lng);
@@ -523,7 +648,7 @@ function renderPins(pins) {
         if (id === 'user-location') return; // never remove the user location marker
         if (id === 'search-location') return; // never remove the search location marker
         if (!nextIds.has(id)) {
-            marker.setMap(null);
+            removeMarker(marker);
             markersById.delete(id);
 
             if (selectedStationMarkerId === id) {
@@ -558,23 +683,22 @@ function renderPins(pins) {
         if (markersById.has(id)) {
             // Keep existing marker and update mutable fields.
             const existingMarker = markersById.get(id);
-            existingMarker.setPosition({ lat: pin.lat, lng: pin.lng });
-            existingMarker.setTitle(pin.name || '');
+            setMarkerPosition(existingMarker, { lat: pin.lat, lng: pin.lng });
+            setMarkerTitle(existingMarker, pin.name || '');
 
             const existingInfoWindow = infoWindowsById.get(id);
             if (existingInfoWindow) {
                 existingInfoWindow.setContent(infoContent);
             }
 
-            bounds.extend(existingMarker.getPosition());
+            bounds.extend(getMarkerPosition(existingMarker));
             return;
         }
 
-        const marker = new google.maps.Marker({
+        const marker = createMapMarker({
             position: { lat: pin.lat, lng: pin.lng },
-            map: map,
+            map,
             title: pin.name,
-            //animation: google.maps.Animation.DROP
         });
 
         const infoWindow = new google.maps.InfoWindow({
@@ -585,11 +709,11 @@ function renderPins(pins) {
             updateSelectedLocationListItem(null);
         });
 
-        marker.addListener('click', function() {
+        addMarkerClickListener(marker, function() {
             openStationInfoWindow(id);
         });
 
-        bounds.extend(marker.getPosition());
+        bounds.extend(getMarkerPosition(marker));
 
         markersById.set(id, marker);
         infoWindowsById.set(id, infoWindow);
