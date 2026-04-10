@@ -20,6 +20,11 @@ type APIResponse struct {
 	Data interface{} `json:"data,omitempty"`
 }
 
+type FuelTypesResponse struct {
+	Code int      `json:"code"`
+	Data []string `json:"data,omitempty"`
+}
+
 // http://0.0.0.0:8080/stations?fuel_type=E10&lat=53.483959&lng=-2.244644
 func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	fuelType := r.URL.Query().Get("fuel_type")
@@ -258,6 +263,20 @@ func formatStationAddress(s Station) string {
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+func fuelTypesAPIHandler(w http.ResponseWriter, r *http.Request) {
+	fuelTypes := getCachedFuelTypes()
+
+	response := FuelTypesResponse{
+		Code: 200,
+		Data: fuelTypes,
+	}
+
+	if err := writeJSONPretty(w, response); err != nil {
+		http.Error(w, "Failed to encode fuel types data", http.StatusInternalServerError)
+		return
+	}
 }
 
 // Handler to return latest successful stations requests from database
