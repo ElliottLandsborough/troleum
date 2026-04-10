@@ -89,6 +89,11 @@ func setupWebServer() *http.Server {
 		http.ServeFile(w, r, "static/main.js")
 	})))
 
+	// /preview.png is the new path for the social media preview image, so we can serve it directly from the static directory with caching
+	mux.Handle("/preview.png", cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/preview.png")
+	})))
+
 	return &http.Server{
 		Addr:    "0.0.0.0:8080",
 		Handler: mux,

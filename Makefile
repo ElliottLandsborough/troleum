@@ -71,6 +71,7 @@ stop:
 	docker-compose down
 
 # prod only commands:
+deploy-to-production: save-image send-image run-remote
 
 # save docker image to file for distribution
 .PHONY: save-image
