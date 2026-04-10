@@ -95,26 +95,6 @@ func getCachedFuelTypes() []string {
 	return append([]string(nil), fuelTypesCache...) // Return a copy to prevent external modification
 }
 
-// Get all unique fuel types available across all stations in memory
-func getAllUniqueFuelTypes() []string {
-	fuelTypeSet := make(map[string]struct{})
-	for _, station := range priceStations {
-		for _, price := range station.FuelPrices {
-			fuelTypeSet[price.FuelType] = struct{}{}
-		}
-	}
-
-	fuelTypes := make([]string, 0, len(fuelTypeSet))
-	for fuelType := range fuelTypeSet {
-		// Only include fuel types that match the expected pattern (e.g., E5, B7_PREMIUM, HVO, etc.)
-		if fuelTypePattern.MatchString(fuelType) {
-			fuelTypes = append(fuelTypes, fuelType)
-		}
-	}
-
-	return fuelTypes
-}
-
 // return a list of stations that have the specified fuel type available, by checking the fuel types of each station in memory
 func filterStationsByFuelType(stations []Station, fuelType string) []Station {
 	if fuelType == "" {

@@ -35,9 +35,6 @@ var (
 	cycleTimeMutex            sync.RWMutex
 )
 
-// Mutex for thread-safe access to savedStationsPages and savedPricesPages maps
-var savedPagesMutex sync.Mutex
-
 func (rq *RetryQueue) AddRequest(pageNum int, isStations bool) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()

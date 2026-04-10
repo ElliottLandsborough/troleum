@@ -180,14 +180,6 @@ func selectRandomStations(stations []Station, n int) []Station {
 	return selected
 }
 
-func getFuelTypes(fuelPrices []FuelPrice) []string {
-	fuelTypes := make([]string, len(fuelPrices))
-	for i, price := range fuelPrices {
-		fuelTypes[i] = price.FuelType
-	}
-	return fuelTypes
-}
-
 func formattedStationsForJS(stations []Station) []map[string]interface{} {
 	// lock the stations mutex while we read from the stations slice to avoid concurrent modification issues
 	formatted := make([]map[string]interface{}, len(stations))
