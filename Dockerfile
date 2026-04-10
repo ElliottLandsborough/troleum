@@ -27,7 +27,7 @@ COPY app/webServer.go /app/
 
 RUN ls -alh /app
 
-# Build the binary (without debug optimizations)
+# Build the binary (with debug optimizations)
 RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
 
 # Build the binary with production optimizations
