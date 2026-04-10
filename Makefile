@@ -63,3 +63,20 @@ logs-app:
 .PHONY: stop
 stop:
 	docker-compose down
+
+# prod only commands:
+
+# save docker image to file for distribution
+.PHONY: save-image
+save-image:
+	docker save -o petroleum_image.tar $(IMAGE_NAME)
+
+# send docker image to remote server over scp
+.PHONY: send-image
+send-image:
+	scp petroleum_image.tar petroleum:/root/petroleum_image.tar
+
+# execute image on remote server
+.PHONY: run-remote
+run-remote:
+	ssh petroleum "docker load -i /root/petroleum_image.tar && docker run -d -p 8080:8080 -v /root/json:/app/json --name petroleum_app -e OAUTH_CLIENT_ID -e OAUTH_CLIENT_SECRET $(IMAGE_NAME)"
