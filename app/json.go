@@ -11,18 +11,6 @@ import (
 	"strings"
 )
 
-// StationsResponse represents the API response structure for stations
-type StationsResponse struct {
-	Success bool      `json:"success"`
-	Data    []Station `json:"data"`
-}
-
-// PriceStationResponse represents the API response structure for price stations
-type PriceStationResponse struct {
-	Success bool           `json:"success"`
-	Data    []PriceStation `json:"data"`
-}
-
 // writeJSONPretty writes data as pretty-printed JSON when in debug mode
 func writeJSONPretty(w http.ResponseWriter, data interface{}) error {
 	w.Header().Set("Content-Type", "application/json")

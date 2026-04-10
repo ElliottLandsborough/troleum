@@ -126,34 +126,6 @@ func haversine(lat1, lon1, lat2, lon2 float64) float64 {
 	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
-// StationNodeIDsByDistance sorts stations by proximity to the given coordinates
-// and returns their NodeIDs in order, closest first.
-func StationNodeIDsByDistance(stations []Station, lat, lon float64) []string {
-	type candidate struct {
-		nodeID   string
-		distance float64
-	}
-
-	candidates := make([]candidate, len(stations))
-	for i, s := range stations {
-		candidates[i] = candidate{
-			nodeID:   s.NodeID,
-			distance: haversine(lat, lon, float64(s.Location.Latitude), float64(s.Location.Longitude)),
-		}
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].distance < candidates[j].distance
-	})
-
-	nodeIDs := make([]string, len(candidates))
-	for i, c := range candidates {
-		nodeIDs[i] = c.nodeID
-	}
-
-	return nodeIDs
-}
-
 func StationsByDistance(stations []Station, lat, lon float64) []Station {
 	type candidate struct {
 		station  Station

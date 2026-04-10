@@ -510,7 +510,7 @@ function initMap() {
 
 function renderPins(pins) {
     const pinList = Array.isArray(pins?.data) ? pins.data : [];
-    console.log(`Fetched ${pinList.length} pins from the server`);
+    console.warn(`Fetched ${pinList.length} pins from the server`);
     const selectedFuelType = getSelectedFuelSortValue();
     const isDistanceSelected = selectedFuelType == null;
 
@@ -641,7 +641,7 @@ function centerMapOnUserLocation() {
     pendingFollowMeLocationRequest = true;
 
     if (navigator.geolocation) {
-        console.log('Attempting to get user location via Geolocation API...');
+        console.warn('Attempting to get user location via Geolocation API...');
         document.getElementById('location-input').placeholder = 'Searching for your location, please wait';
         if (userLat !== null && userLng !== null) {
             applyPendingFollowMeLocation(userLat, userLng);
