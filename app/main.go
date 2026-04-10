@@ -22,11 +22,6 @@ const (
 
 // main is the entry point of the application
 func main() {
-	// Initialize database connection
-	if err := InitDatabase(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
 	// Create context that can be cancelled for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

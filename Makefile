@@ -4,9 +4,6 @@ IMAGE_NAME = petroleum:latest
 # App container name
 APP_CONTAINER_NAME = petroleum_app
 
-# Container name
-POSTGRES_CONTAINER_NAME = petroleum_postgres
-
 # Binary name
 BINARY = main
 
@@ -48,8 +45,6 @@ rebuildrun:
 	docker rm -f $(APP_CONTAINER_NAME) || true
 	docker kill $(APP_CONTAINER_NAME)_standalone || true
 	docker rm -f $(APP_CONTAINER_NAME)_standalone || true
-	docker kill $(POSTGRES_CONTAINER_NAME) || true
-	docker rm -f $(POSTGRES_CONTAINER_NAME) || true
 	$(MAKE) clean
 	$(MAKE) run
 	$(MAKE) logs-app

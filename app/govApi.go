@@ -204,18 +204,6 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 		log.Printf("[STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
 
-	// Save request to database regardless of success/failure
-	var errorMessage string
-	if err != nil {
-		errorMessage = err.Error()
-	}
-
-	preview := bodyString
-	if len(preview) > JSONPreviewLength {
-		preview = preview[:JSONPreviewLength]
-	}
-
-	SaveRequestToDatabase(RequestTypeStationsPage, pageNum, resp.StatusCode, preview, errorMessage)
 	log.Printf("[STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
@@ -286,18 +274,6 @@ func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker)
 		log.Printf("[PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
 
-	// Save request to database regardless of success/failure
-	var errorMessage string
-	if err != nil {
-		errorMessage = err.Error()
-	}
-
-	preview := bodyString
-	if len(preview) > JSONPreviewLength {
-		preview = preview[:JSONPreviewLength]
-	}
-
-	SaveRequestToDatabase(RequestTypePricesPage, pageNum, resp.StatusCode, preview, errorMessage)
 	log.Printf("[PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
