@@ -90,7 +90,7 @@
 
         .top-nav #location-input {
             height: 64px;
-            width: calc(100% - 64px - 64px);
+            width: calc(100% - 64px - 64px - 64px);
             font-size: 20px;
             line-height: 64px;
             padding: 20px;
@@ -98,6 +98,15 @@
         }
 
         .top-nav #my-location {
+            height: 64px;
+            width: 64px;
+            font-size: 24px;
+            line-height: 64px;
+            cursor: pointer;
+            float: left;
+        }
+
+        .top-nav #search-mode-toggle {
             height: 64px;
             width: 64px;
             font-size: 24px;
@@ -125,6 +134,8 @@
     <div class="top-nav">
         <!-- button to center map on user's current location -->
         <button id="my-location" title="Click to center map on your current location" onclick="centerMapOnUserLocation()">📍</button>
+        <!-- button to toggle search location mode -->
+        <button id="search-mode-toggle" title="Click to enable manual location search" onclick="toggleSearchMode()">✏️</button>
         <input id="location-input" title="Enter a location" type="text" placeholder="Enter a location" />
         <button id="menu-toggle" title="Toggle menu">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -168,6 +179,81 @@
         let userLat = null;
         let userLng = null;
         const USER_MARKER_Z_INDEX = 1000000;
+        let isFollowingMyLocation = true;
+        let searchLocationLat = null;
+        let searchLocationLng = null;
+
+        function updateFollowMeUI() {
+            const btn = document.getElementById('my-location');
+            const input = document.getElementById('location-input');
+            const toggleBtn = document.getElementById('search-mode-toggle');
+
+            if (isFollowingMyLocation) {
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                input.disabled = true;
+                input.style.opacity = '0.5';
+                toggleBtn.style.opacity = '0.5';
+                toggleBtn.style.cursor = 'not-allowed';
+            } else {
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                input.disabled = false;
+                input.style.opacity = '1';
+                toggleBtn.style.opacity = '1';
+                toggleBtn.style.cursor = 'pointer';
+            }
+        }
+
+        function setFollowMeMode() {
+            isFollowingMyLocation = true;
+            searchLocationLat = null;
+            searchLocationLng = null;
+            document.getElementById('location-input').value = '';
+
+            markersById.forEach((marker, id) => {
+                if (id === 'search-location') {
+                    marker.setVisible(false);
+                } else if (id === 'user-location') {
+                    marker.setVisible(true);
+                }
+            });
+
+            updateFollowMeUI();
+        }
+
+        function setSearchLocationMode(lat, lng) {
+            isFollowingMyLocation = false;
+            searchLocationLat = lat;
+            searchLocationLng = lng;
+
+            markersById.forEach((marker, id) => {
+                if (id === 'user-location') {
+                    marker.setVisible(false);
+                } else if (id === 'search-location') {
+                    marker.setVisible(true);
+                }
+            });
+
+            updateFollowMeUI();
+        }
+
+        function toggleSearchMode() {
+            if (isFollowingMyLocation) {
+                // Switch to search mode (blue dot hidden, input enabled)
+                isFollowingMyLocation = false;
+                markersById.forEach((marker, id) => {
+                    if (id === 'user-location') {
+                        marker.setVisible(false);
+                    }
+                });
+                updateFollowMeUI();
+                document.getElementById('location-input').focus();
+            } else {
+                // Switch back to follow me mode
+                setFollowMeMode();
+            }
+        }
 
         function preloadFuelTypes() {
             if (fuelTypesPromise) {
@@ -245,6 +331,16 @@
                     userLat = lat;
                     userLng = lon;
 
+                    // Populate text box with reverse-geocoded address on first detection
+                    if (isFollowingMyLocation && !document.getElementById('location-input').value) {
+                        const geocoder = new google.maps.Geocoder();
+                        geocoder.geocode({ location: { lat, lng: lon } }, (results, status) => {
+                            if (status === 'OK' && results[0]) {
+                                document.getElementById('location-input').value = results[0].formatted_address;
+                            }
+                        });
+                    }
+
                     // Create or update a marker for the user's location
                     if (!markersById.has('user-location')) {
                         const userMarker = new google.maps.Marker({
@@ -266,6 +362,9 @@
                         const userMarker = markersById.get('user-location');
                         userMarker.setPosition({ lat, lng: lon });
                         userMarker.setZIndex(USER_MARKER_Z_INDEX);
+                        if (isFollowingMyLocation) {
+                            userMarker.setVisible(true);
+                        }
                     }
                 });
             }
@@ -335,6 +434,33 @@
                 return;
                 }
 
+                const lat = place.geometry.location.lat();
+                const lng = place.geometry.location.lng();
+
+                if (!markersById.has('search-location')) {
+                    const searchMarker = new google.maps.Marker({
+                        position: { lat, lng },
+                        map: map,
+                        title: 'Search Location',
+                        zIndex: 999999,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: '#34A853',
+                            fillOpacity: 1,
+                            strokeColor: '#ffffff',
+                            strokeWeight: 2,
+                        },
+                    });
+                    markersById.set('search-location', searchMarker);
+                } else {
+                    const searchMarker = markersById.get('search-location');
+                    searchMarker.setPosition({ lat, lng });
+                    searchMarker.setVisible(true);
+                }
+
+                setSearchLocationMode(lat, lng);
+
                 // Center map on selected place
                 if (place.geometry.viewport) {
                     map.fitBounds(place.geometry.viewport);
@@ -343,9 +469,6 @@
                     map.setCenter(place.geometry.location);
                     map.setZoom(14);
                 }
-
-                // Move marker
-                //marker.setPosition(place.geometry.location);
             });
 
             centerMapOnUserLocation();
@@ -373,6 +496,7 @@
             // Remove markers that are no longer in the latest results.
             markersById.forEach((marker, id) => {
                 if (id === 'user-location') return; // never remove the user location marker
+                if (id === 'search-location') return; // never remove the search location marker
                 if (!nextIds.has(id)) {
                     marker.setMap(null);
                     markersById.delete(id);
@@ -472,6 +596,8 @@
 
         // Function to get the user's current location and center the map on it
         function centerMapOnUserLocation() {
+            setFollowMeMode();
+
             if (navigator.geolocation) {
                 console.log('Attempting to get user location via Geolocation API...');
                 navigator.geolocation.getCurrentPosition((position) => {
@@ -503,5 +629,10 @@
 
     <!-- Load Google Maps API -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ&callback=initMap&libraries=places" async defer></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            updateFollowMeUI();
+        });
+    </script>
 </body>
 </html>
