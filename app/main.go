@@ -71,6 +71,9 @@ func main() {
 	// Start continuous fetching of prices in a goroutine
 	go continuousFetchPrices(client, rateLimiter)
 
+	// Start continuous fetching of prices in a goroutine
+	go continuousUpdateCachedFuelTypes()
+
 	// Start retry worker in a goroutine
 	go retryWorker(client, rateLimiter)
 

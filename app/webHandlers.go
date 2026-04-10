@@ -2,62 +2,205 @@
 package main
 
 import (
+	"fmt"
+	"log"
+	"math/rand/v2"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 )
 
+var fuelTypePattern = regexp.MustCompile(`^[A-Z0-9_]{1,16}$`)
+
+// a map response will have a key of code (int), a key of message (string) and a key of data (interface{})
+type APIResponse struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// http://0.0.0.0:8080/stations?fuel_type=E10&lat=53.483959&lng=-2.244644
 func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse query parameters
-	/*
-		perPageStr := r.URL.Query().Get("per_page")
-		perPage := 20 // default
-		if perPageStr != "" {
-			if p, err := strconv.Atoi(perPageStr); err == nil && p > 0 {
-				perPage = p
-			}
-		}
-	*/
-
-	location := r.URL.Query().Get("location")
 	fuelType := r.URL.Query().Get("fuel_type")
-
-	// Fetch stations from database with optional filtering/sorting
-	_, err := GetStationsFromDatabase(location, fuelType)
-	if err != nil {
-		http.Error(w, "Failed to get stations: "+err.Error(), http.StatusInternalServerError)
+	if fuelType != "" && !fuelTypePattern.MatchString(fuelType) {
+		http.Error(w, "Invalid fuel_type. Use 1-16 chars: A-Z, 0-9, and underscore only.", http.StatusBadRequest)
 		return
 	}
 
-	stationLocationsMutex.Lock()
-	defer stationLocationsMutex.Unlock()
-	val := stationLocations
+	if fuelType != "" {
+		log.Printf("Filtering stations by fuel type: %s", fuelType)
+	} else {
+		log.Printf("No fuel type filter applied, returning all stations")
+	}
 
-	// Return stations as JSON
-	if err := writeJSONPretty(w, val); err != nil {
+	lat := r.URL.Query().Get("lat")
+	lng := r.URL.Query().Get("lng")
+
+	// only allow 0-9, dot and minus in lat/lng
+	latLngPattern := regexp.MustCompile(`^-?[0-9.]+$`)
+	if lat != "" && !latLngPattern.MatchString(lat) {
+		http.Error(w, "Invalid lat parameter", http.StatusBadRequest)
+		return
+	}
+	if lng != "" && !latLngPattern.MatchString(lng) {
+		http.Error(w, "Invalid lng parameter", http.StatusBadRequest)
+		return
+	}
+
+	// make a copy of the stations slice to avoid modifying the original in memorywhen sorting by distance
+	stationsMutex.Lock()
+	stationsToBeReturned := make([]Station, len(stations))
+	copy(stationsToBeReturned, stations)
+	stationsMutex.Unlock()
+
+	log.Printf("Received request for stations with fuel type '%s' and location (%s, %s)", fuelType, lat, lng)
+
+	fuelTypes := getCachedFuelTypes()
+	// if fuelType matches any of the cached fuel types, log it
+	if fuelType != "" {
+		foundStationsWithFuelType := false
+		for _, ft := range fuelTypes {
+			if ft == fuelType {
+				stationsToBeReturned = filterStationsByFuelType(stations, fuelType)
+				log.Printf("Found %d stations with fuel type %s", len(stationsToBeReturned), fuelType)
+				foundStationsWithFuelType = true
+				break
+			}
+		}
+		if foundStationsWithFuelType {
+			log.Printf("Requested fuel type %s is available in cached fuel types", fuelType)
+		} else {
+			log.Printf("Requested fuel type %s is NOT available in cached fuel types", fuelType)
+		}
+	}
+
+	if lat != "" && lng != "" {
+		log.Printf("Received location parameters: lat=%s, lng=%s", lat, lng)
+	} else {
+		log.Printf("No location parameters provided")
+	}
+
+	// If lat/lng provided, sort stations by distance to that location, otherwise return in order received from API/database
+	if lat != "" && lng != "" {
+		log.Printf("Sorting stations by distance to provided location (%s, %s)", lat, lng)
+		// Convert lat/lng to float64
+		latFloat, err1 := strconv.ParseFloat(lat, 64)
+		lngFloat, err2 := strconv.ParseFloat(lng, 64)
+		if err1 != nil || err2 != nil {
+			http.Error(w, "Invalid lat or lng parameter", http.StatusBadRequest)
+			return
+		}
+
+		stationsToBeReturned = StationsByDistance(stationsToBeReturned, latFloat, lngFloat)
+
+		log.Printf("Sorted stations by distance to location (%s, %s)", lat, lng)
+	} else {
+		log.Printf("No location provided, returning stations in original order")
+	}
+
+	// if there are more than 1000 stations to be returned, select 1000 random stations to return and log that we are doing this
+	if len(stationsToBeReturned) > 1000 {
+		log.Printf("More than 1000 stations to be returned (%d), selecting 1000 random stations to return", len(stationsToBeReturned))
+		stationsToBeReturned = selectRandomStations(stationsToBeReturned, 1000)
+	}
+
+	// generate an API response with code 200, message "Success", and the stations data, and write it as pretty JSON to the response
+	response := APIResponse{
+		Code: 200,
+		//Message: "success",
+		Data: formattedStationsForJS(stationsToBeReturned),
+	}
+
+	if err := writeJSONPretty(w, response); err != nil {
 		http.Error(w, "Failed to encode stations data", http.StatusInternalServerError)
+		return
 	}
 }
 
-// todo: move to database.go
-func GetStationsFromDatabase(location string, fuelType string) ([]Station, error) {
-	// This function should query the database for stations, applying any necessary filters or sorting based on the parameters.
-	// For example, it might use SQL queries to filter by fuel type or sort by distance if location is provided.
-	// The implementation details would depend on the database schema and the ORM or database library being used.
+func selectRandomStations(stations []Station, n int) []Station {
+	if len(stations) <= n {
+		return stations
+	}
 
-	// Placeholder implementation - replace with actual database query logic
-	return []Station{}, nil
+	selected := make([]Station, n)
+	perm := rand.Perm(len(stations))
+	for i := 0; i < n; i++ {
+		selected[i] = stations[perm[i]]
+	}
+	return selected
+}
 
-	/*
-			        {
-		                id: 1,
-		                name: "Eiffel Tower",
-		                lat: 48.8584,
-		                lng: 2.2945,
-		                city: "Paris, France",
-		                description: "Iconic iron lattice tower on the Champ de Mars",
-		                type: "landmark"
-		            },
-	*/
+func getFuelTypes(fuelPrices []FuelPrice) []string {
+	fuelTypes := make([]string, len(fuelPrices))
+	for i, price := range fuelPrices {
+		fuelTypes[i] = price.FuelType
+	}
+	return fuelTypes
+}
+
+func formattedStationsForJS(stations []Station) []map[string]interface{} {
+	// lock the stations mutex while we read from the stations slice to avoid concurrent modification issues
+	formatted := make([]map[string]interface{}, len(stations))
+	for i, s := range stations {
+		formatted[i] = map[string]interface{}{
+			"id":          s.NodeID,
+			"name":        formatStationName(s),
+			"lat":         s.Location.Latitude,
+			"lng":         s.Location.Longitude,
+			"city":        s.Location.City,
+			"description": formatStationDescription(s),
+			"type":        "landmark",
+		}
+	}
+	return formatted
+}
+
+func formatStationName(s Station) string {
+	if s.TradingName == "" && s.BrandName == "" {
+		return "Unnamed Station"
+	}
+
+	if s.IsSameTradingAndBrandName {
+		return s.BrandName
+	}
+
+	if s.TradingName == "" {
+		return s.BrandName
+	}
+
+	if s.BrandName == "" {
+		return s.TradingName
+	}
+
+	return fmt.Sprintf("%s - %s", s.BrandName, s.TradingName)
+}
+
+func formatStationDescription(s Station) string {
+	var parts []string
+
+	// Add telephone if not blank
+	if s.PublicPhoneNumber != "" {
+		parts = append(parts, fmt.Sprintf("📞 <a href=\"tel:%s\">%s</a>", s.PublicPhoneNumber, s.PublicPhoneNumber))
+	}
+
+	// Add address if not blank
+	address := formatStationAddress(s)
+	if address != "" {
+		parts = append(parts, fmt.Sprintf("📍 %s", address))
+	}
+
+	return strings.Join(parts, "<br />\n")
+}
+
+func formatStationAddress(s Station) string {
+	parts := []string{}
+	for _, p := range []string{s.Location.AddressLine1, s.Location.AddressLine2, s.Location.City, s.Location.Country, s.Location.County, s.Location.Postcode} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // Handler to return latest successful stations requests from database

@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"math"
+	"sort"
 	"time"
 )
 
@@ -104,4 +106,75 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 			currentPage++
 		}
 	}
+}
+
+// haversine returns the distance in kilometres between two lat/lon points.
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0 // Earth's radius in km
+
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLon := (lon2 - lon1) * math.Pi / 180
+
+	lat1R := lat1 * math.Pi / 180
+	lat2R := lat2 * math.Pi / 180
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1R)*math.Cos(lat2R)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}
+
+// StationNodeIDsByDistance sorts stations by proximity to the given coordinates
+// and returns their NodeIDs in order, closest first.
+func StationNodeIDsByDistance(stations []Station, lat, lon float64) []string {
+	type candidate struct {
+		nodeID   string
+		distance float64
+	}
+
+	candidates := make([]candidate, len(stations))
+	for i, s := range stations {
+		candidates[i] = candidate{
+			nodeID:   s.NodeID,
+			distance: haversine(lat, lon, float64(s.Location.Latitude), float64(s.Location.Longitude)),
+		}
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].distance < candidates[j].distance
+	})
+
+	nodeIDs := make([]string, len(candidates))
+	for i, c := range candidates {
+		nodeIDs[i] = c.nodeID
+	}
+
+	return nodeIDs
+}
+
+func StationsByDistance(stations []Station, lat, lon float64) []Station {
+	type candidate struct {
+		station  Station
+		distance float64
+	}
+
+	candidates := make([]candidate, len(stations))
+	for i, s := range stations {
+		candidates[i] = candidate{
+			station:  s,
+			distance: haversine(lat, lon, float64(s.Location.Latitude), float64(s.Location.Longitude)),
+		}
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].distance < candidates[j].distance
+	})
+
+	sortedStations := make([]Station, len(candidates))
+	for i, c := range candidates {
+		sortedStations[i] = c.station
+	}
+
+	return sortedStations
 }

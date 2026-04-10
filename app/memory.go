@@ -45,6 +45,10 @@ var savedPricesPagesMutex sync.Mutex
 var enrichmentTimer *time.Timer
 var enrichmentTimerMutex sync.Mutex
 
+// fuelTypesCache is a global cache of all unique fuel types available across all stations in memory, updated during enrichment
+var fuelTypesCache []string
+var fuelTypesCacheMutex sync.Mutex
+
 // enrichmentInterval is the duration between automatic enrichments
 const enrichmentInterval = 60 * time.Minute
 

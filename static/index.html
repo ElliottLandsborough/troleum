@@ -49,91 +49,16 @@
     <div id="map"></div>
 
     <script>
-        // Sample data: Array of locations with info
-        const locations = [
-            {
-                id: 1,
-                name: "Eiffel Tower",
-                lat: 48.8584,
-                lng: 2.2945,
-                city: "Paris, France",
-                description: "Iconic iron lattice tower on the Champ de Mars",
-                type: "landmark"
-            },
-            {
-                id: 2,
-                name: "Statue of Liberty",
-                lat: 40.6892,
-                lng: -74.0445,
-                city: "New York, USA",
-                description: "Colossal neoclassical sculpture on Liberty Island",
-                type: "landmark"
-            },
-            {
-                id: 3,
-                name: "Big Ben",
-                lat: 51.5007,
-                lng: -0.1246,
-                city: "London, UK",
-                description: "Great bell of the clock at the Palace of Westminster",
-                type: "landmark"
-            },
-            {
-                id: 4,
-                name: "Sydney Opera House",
-                lat: -33.8568,
-                lng: 151.2153,
-                city: "Sydney, Australia",
-                description: "Multi-venue performing arts centre",
-                type: "landmark"
-            },
-            {
-                id: 5,
-                name: "Taj Mahal",
-                lat: 27.1751,
-                lng: 78.0421,
-                city: "Agra, India",
-                description: "Ivory-white marble mausoleum",
-                type: "landmark"
-            },
-            {
-                id: 6,
-                name: "Christ the Redeemer",
-                lat: -22.9519,
-                lng: -43.2105,
-                city: "Rio de Janeiro, Brazil",
-                description: "Art Deco statue of Jesus Christ",
-                type: "landmark"
-            },
-            {
-                id: 7,
-                name: "Tokyo Tower",
-                lat: 35.6586,
-                lng: 139.7454,
-                city: "Tokyo, Japan",
-                description: "Communications and observation tower",
-                type: "landmark"
-            },
-            {
-                id: 8,
-                name: "Burj Khalifa",
-                lat: 25.1972,
-                lng: 55.2744,
-                city: "Dubai, UAE",
-                description: "World's tallest building",
-                type: "landmark"
-            }
-        ];
-
         let map;
         let markers = [];
+        let locations = [];
         let infoWindows = [];
 
         function initMap() {
             // Create map centered on the world
             map = new google.maps.Map(document.getElementById('map'), {
-                zoom: 2,
-                center: { lat: 20, lng: 0 },
+                zoom: 6,
+                center: { lat: 54.23782, lng: -4.555111 },
                 mapTypeControl: true,
                 streetViewControl: false
             });
@@ -141,13 +66,70 @@
             // Create bounds to fit all markers
             const bounds = new google.maps.LatLngBounds();
 
-            // Add markers for each location
-            locations.forEach((location) => {
-                addMarker(location, bounds);
-            });
+            // Fetch and display markers
+            fetchMarkers();
+        }
 
-            // Fit map to show all markers
-            map.fitBounds(bounds);
+        function clearMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            infoWindows = [];
+        }
+
+        function fetchMarkers() {
+            let fetchUrl = '/stations';
+
+            // get the current lat lon from the browser's geolocation API, and if the user allows it, use those coordinates to fetch stations data from the server, otherwise fetch stations data without coordinates
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    console.log(`User allowed geolocation, fetching stations data with coordinates: ${lat}, ${lon}`);
+                    fetchUrl += `?lat=${lat}&lon=${lon}`;
+                }, (error) => {
+                    console.warn(`User denied geolocation or an error occurred (${error.message}), fetching stations data without coordinates`);
+                });
+            } else {
+                console.warn('Geolocation is not supported by this browser, fetching stations data without coordinates');
+            }
+
+            // Fetch stations data from the server
+            fetch(fetchUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.code === 200 && data.data) {
+                        locations = data.data.map(station => ({
+                            id: station.id,
+                            name: station.name,
+                            lat: station.lat,
+                            lng: station.lng,
+                            city: station.city,
+                            description: station.description,
+                            type: station.type
+                        }));
+                        // Clear existing markers
+                        clearMarkers();
+
+                        // Create bounds to fit all markers
+                        const bounds = new google.maps.LatLngBounds();
+
+                        let locationCount = locations.length;
+                        console.log(`Fetched ${locationCount} stations from the server`);
+
+                        // Add markers for each location
+                        locations.forEach((location) => {
+                            addMarker(location, bounds);
+                        });
+
+                        // Fit map to show all markers
+                        //map.fitBounds(bounds);
+                    } else {
+                        console.error('Failed to load stations data:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching stations data:', error);
+                });
         }
 
         function addMarker(location, bounds) {
@@ -219,23 +201,6 @@
                 marker.setVisible(visible);
             });
         }
-
-        // Example: Add a location programmatically after map loads
-        // Uncomment to test:
-        /*
-        setTimeout(() => {
-            addNewLocation({
-                id: 9,
-                name: "Golden Gate Bridge",
-                lat: 37.8199,
-                lng: -122.4783,
-                city: "San Francisco, USA",
-                description: "Iconic suspension bridge",
-                type: "landmark"
-            });
-        }, 3000);
-        */
-
     </script>
 
     <!-- Load Google Maps API -->
