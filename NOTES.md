@@ -1,6 +1,24 @@
 
 # Random notes
 
+Todo:
+
+Something like this to cache bust assets and load api keys:
+
+```
+// webServer.go - rootHandler
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+    if r.URL.Path != "/" {
+        http.NotFound(w, r)
+        return
+    }
+    content, _ := os.ReadFile("static/index.html")
+    page := strings.ReplaceAll(string(content), "{{MAPS_KEY}}", os.Getenv("MAPS_API_KEY"))
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    w.Write([]byte(page))
+}
+```
+
 // url
 
 POST: 
