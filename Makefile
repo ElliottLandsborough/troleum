@@ -85,13 +85,13 @@ send-image:
 	ssh troleumdeploy "mkdir -p /home/deploy/troleum && chmod 700 /home/deploy/troleum"
 	scp troleum_image.tar troleumdeploy:/home/deploy/troleum/troleum_image.tar
 	scp .env troleumdeploy:/home/deploy/troleum/.env
-	ssh troleumdeploy "mkdir -p /home/deploy/troleum/json && chmod 755 /home/deploy/troleum/json"
+	ssh troleumdeploy "mkdir -p /home/deploy/troleum/json && chmod 700 /home/deploy/troleum/json"
 	ssh troleumdeploy "chmod 600 /home/deploy/troleum/.env /home/deploy/troleum/troleum_image.tar"
 
 # execute image on remote server
 .PHONY: run-remote
 run-remote:
 	ssh troleumdeploy "docker kill troleum_app || true && docker rm -f troleum_app || true"
-	ssh troleumdeploy "docker load -i /home/deploy/troleum/troleum_image.tar && docker rm -f $(APP_CONTAINER_NAME) || true && docker run -d --restart always --platform $(REMOTE_PLATFORM) -p 8080:8080 -v /home/deploy/troleum/json:/app/json:Z --name $(APP_CONTAINER_NAME) --env-file /home/deploy/troleum/.env $(IMAGE_NAME)"
+	ssh troleumdeploy "docker load -i /home/deploy/troleum/troleum_image.tar && docker rm -f $(APP_CONTAINER_NAME) || true && docker run --user $(id -u deploy):$(id -g deploy) -d --restart always --platform $(REMOTE_PLATFORM) -p 8080:8080 -v /home/deploy/troleum/json:/app/json:Z --name $(APP_CONTAINER_NAME) --env-file /home/deploy/troleum/.env $(IMAGE_NAME)"
 	ssh troleumdeploy "rm -f /home/deploy/troleum/troleum_image.tar"
 	ssh troleumdeploy "docker logs -f $(APP_CONTAINER_NAME)"
