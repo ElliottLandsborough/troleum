@@ -53,6 +53,8 @@
         let markers = [];
         let locations = [];
         let infoWindows = [];
+        let debounceTimer = null;
+        let abortController = null;
 
         function initMap() {
             // Create map centered on the world
@@ -64,10 +66,49 @@
             });
 
             // Create bounds to fit all markers
-            const bounds = new google.maps.LatLngBounds();
+            //const bounds = new google.maps.LatLngBounds();
 
-            // Fetch and display markers
-            fetchMarkers();
+            map.addListener('idle', () => {
+                clearTimeout(debounceTimer);
+
+                const url = new URL('/stations', window.location.origin);
+
+                // get the current lat lon from the browser's geolocation API, and if the user allows it, use those coordinates to fetch stations data from the server, otherwise fetch stations data without coordinates
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition((position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        console.log(`User allowed geolocation, fetching stations data with coordinates: ${lat}, ${lon}`);
+                        url.searchParams.set('lat', lat);
+                        url.searchParams.set('lng', lon);
+                    }, (error) => {
+                        console.warn(`User denied geolocation or an error occurred (${error.message}), fetching stations data without coordinates`);
+                    });
+                } else {
+                    console.warn('Geolocation is not supported by this browser, fetching stations data without coordinates');
+                }
+
+                const bounds = map.getBounds();
+                const ne = bounds.getNorthEast();
+                const sw = bounds.getSouthWest();
+
+                url.searchParams.set('bbox', `${sw.lat()},${sw.lng()},${ne.lat()},${ne.lng()}`);
+
+                debounceTimer = setTimeout(async () => {
+                    // Cancel any previous in-flight request
+                    abortController?.abort();
+                    abortController = new AbortController();
+
+                    try {
+                        const res = await fetch(url, { signal: abortController.signal });
+                        const pins = await res.json();
+                        renderPins(pins);
+                    } catch (err) {
+                    if (err.name === 'AbortError') return; // expected, ignore
+                        console.error(err);
+                    }
+                }, 400);
+            });
         }
 
         function clearMarkers() {
@@ -76,9 +117,49 @@
             infoWindows = [];
         }
 
-        function fetchMarkers() {
-            let fetchUrl = '/stations';
+        function renderPins(pins) {
+            console.log(`Fetched ${pins.data.length} pins from the server`);
+    
+            clearMarkers();
 
+            const bounds = new google.maps.LatLngBounds();
+
+            pins.data.forEach(pin => {
+                const marker = new google.maps.Marker({
+                    position: { lat: pin.lat, lng: pin.lng },
+                    map: map,
+                    title: pin.name,
+                    //animation: google.maps.Animation.DROP
+                });
+
+                const infoContent = `
+                    <div class="info-window">
+                        <h3>${pin.name}</h3>
+                        <p><strong>${pin.city}</strong></p>
+                        <p class="description">${pin.description}</p>
+                    </div>
+                `;
+
+                const infoWindow = new google.maps.InfoWindow({
+                    content: infoContent
+                });
+
+                marker.addListener('click', function() {
+                    infoWindows.forEach(iw => iw.close());
+                    infoWindow.open(map, marker);
+                });
+
+                bounds.extend(marker.getPosition());
+
+                markers.push(marker);
+                infoWindows.push(infoWindow);
+            });
+
+            // Fit map to show all markers
+            //map.fitBounds(bounds);
+        }
+
+        function fetchMarkers() {
             // get the current lat lon from the browser's geolocation API, and if the user allows it, use those coordinates to fetch stations data from the server, otherwise fetch stations data without coordinates
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((position) => {

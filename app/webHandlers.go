@@ -15,9 +15,9 @@ var fuelTypePattern = regexp.MustCompile(`^[A-Z0-9_]{1,16}$`)
 
 // a map response will have a key of code (int), a key of message (string) and a key of data (interface{})
 type APIResponse struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code int `json:"code"`
+	//Message string      `json:"message"`
+	Data interface{} `json:"data,omitempty"`
 }
 
 // http://0.0.0.0:8080/stations?fuel_type=E10&lat=53.483959&lng=-2.244644
@@ -81,6 +81,27 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No location parameters provided")
 	}
 
+	// If bounding box parameters provided, filter stations to those within the bounding box
+	bbox := r.URL.Query().Get("bbox")
+	if bbox != "" {
+		log.Printf("Received bounding box parameter: %s", bbox)
+		parts := strings.Split(bbox, ",")
+		if len(parts) != 4 {
+			http.Error(w, "Invalid bbox parameter. Use format: minLat,minLng,maxLat,maxLng", http.StatusBadRequest)
+			return
+		}
+		minLat, err1 := strconv.ParseFloat(parts[0], 64)
+		minLng, err2 := strconv.ParseFloat(parts[1], 64)
+		maxLat, err3 := strconv.ParseFloat(parts[2], 64)
+		maxLng, err4 := strconv.ParseFloat(parts[3], 64)
+		if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+			http.Error(w, "Invalid bbox parameter. Use format: minLat,minLng,maxLat,maxLng with valid float values", http.StatusBadRequest)
+			return
+		}
+		stationsToBeReturned = filterStationsByBoundingBox(stationsToBeReturned, minLat, minLng, maxLat, maxLng)
+		log.Printf("Filtered stations to %d within bounding box", len(stationsToBeReturned))
+	}
+
 	// If lat/lng provided, sort stations by distance to that location, otherwise return in order received from API/database
 	if lat != "" && lng != "" {
 		log.Printf("Sorting stations by distance to provided location (%s, %s)", lat, lng)
@@ -116,6 +137,18 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode stations data", http.StatusInternalServerError)
 		return
 	}
+}
+
+func filterStationsByBoundingBox(stations []Station, minLat, minLng, maxLat, maxLng float64) []Station {
+	filtered := make([]Station, 0, len(stations))
+	for _, s := range stations {
+		lat := float64(s.Location.Latitude)
+		lng := float64(s.Location.Longitude)
+		if lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
 }
 
 func selectRandomStations(stations []Station, n int) []Station {
