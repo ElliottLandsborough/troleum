@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -147,10 +148,15 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 	return nil
 }
 
-func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
 	// Wait for rate limiter only when we're about to make an API call
 	log.Printf("[STATIONS] Waiting for rate limiter before fetching page %d", pageNum)
-	<-rateLimiter.C
+	select {
+	case <-ctx.Done():
+		log.Printf("[STATIONS] Shutdown requested, aborting page %d fetch", pageNum)
+		return false
+	case <-rateLimiter.C:
+	}
 
 	log.Printf("[STATIONS] Fetching page %d", pageNum)
 
@@ -215,10 +221,15 @@ func fetchStationsPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticke
 	return false
 }
 
-func fetchPricesPage(client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
 	// Wait for rate limiter only when we're about to make an API call
 	log.Printf("[PRICES] Waiting for rate limiter before fetching page %d", pageNum)
-	<-rateLimiter.C
+	select {
+	case <-ctx.Done():
+		log.Printf("[PRICES] Shutdown requested, aborting page %d fetch", pageNum)
+		return false
+	case <-rateLimiter.C:
+	}
 
 	log.Printf("[PRICES] Fetching page %d", pageNum)
 

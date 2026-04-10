@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"math"
 	"time"
@@ -123,22 +124,34 @@ func filterStationsByFuelType(stations []Station, fuelType string) []Station {
 	return filtered
 }
 
-func continuousUpdateCachedFuelTypes() {
+func continuousUpdateCachedFuelTypes(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		log.Println("[CACHE] Updating fuel types cache")
 		updateFuelTypesCache()
-		<-ticker.C
+		select {
+		case <-ctx.Done():
+			log.Println("[CACHE] Shutdown requested, stopping fuel types cache updater")
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
-func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
+func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[PRICES] Shutdown requested, stopping fetch worker")
+			return
+		default:
+		}
+
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
 			// Check if we need to skip this cycle due to 15-minute limit
@@ -151,7 +164,12 @@ func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 				if timeSinceLastCycle < 15*time.Minute {
 					waitTime := 15*time.Minute - timeSinceLastCycle
 					log.Printf("[PRICES] Skipping cycle, waiting %v for 15-minute limit", waitTime)
-					time.Sleep(waitTime)
+					select {
+					case <-ctx.Done():
+						log.Println("[PRICES] Shutdown requested, stopping fetch worker")
+						return
+					case <-time.After(waitTime):
+					}
 					continue
 				}
 			}
@@ -160,7 +178,7 @@ func continuousFetchPrices(client *OAuthClient, rateLimiter *time.Ticker) {
 			log.Println("[PRICES] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchPricesPage(client, currentPage, rateLimiter)
+		isLastPage := fetchPricesPage(ctx, client, currentPage, rateLimiter)
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -78,10 +79,15 @@ func getRequestType(isStations bool) string {
 	return "PRICES"
 }
 
-func retryWorker(client *OAuthClient, rateLimiter *time.Ticker) {
+func retryWorker(ctx context.Context, client *OAuthClient, rateLimiter *time.Ticker) {
 	for {
 		// Check for retry requests every 30 seconds
-		time.Sleep(30 * time.Second)
+		select {
+		case <-ctx.Done():
+			log.Println("[RETRY] Shutdown requested, stopping retry worker")
+			return
+		case <-time.After(30 * time.Second):
+		}
 
 		if !globalRetryQueue.HasRequests() {
 			continue
@@ -130,7 +136,12 @@ func retryWorker(client *OAuthClient, rateLimiter *time.Ticker) {
 
 		// Wait for rate limiter before processing retry
 		log.Printf("[RETRY] Waiting for rate limiter before processing retry for %s page %d", getRequestType(req.IsStations), req.PageNum)
-		<-rateLimiter.C
+		select {
+		case <-ctx.Done():
+			log.Println("[RETRY] Shutdown requested, stopping retry worker")
+			return
+		case <-rateLimiter.C:
+		}
 
 		log.Printf("[RETRY] Processing %s page %d (attempt %d)", getRequestType(req.IsStations), req.PageNum, req.AttemptCount)
 

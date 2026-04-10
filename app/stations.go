@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"math"
 	"sort"
@@ -65,11 +66,18 @@ type BankHoliday struct {
 	Is24Hours bool   `json:"is_24_hours"`
 }
 
-func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
+func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[STATIONS] Shutdown requested, stopping fetch worker")
+			return
+		default:
+		}
+
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
 			// Check if we need to skip this cycle due to hourly limit
@@ -82,7 +90,12 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 				if timeSinceLastCycle < time.Hour {
 					waitTime := time.Hour - timeSinceLastCycle
 					log.Printf("[STATIONS] Skipping cycle, waiting %v for hourly limit", waitTime)
-					time.Sleep(waitTime)
+					select {
+					case <-ctx.Done():
+						log.Println("[STATIONS] Shutdown requested, stopping fetch worker")
+						return
+					case <-time.After(waitTime):
+					}
 					continue
 				}
 			}
@@ -91,7 +104,7 @@ func continuousFetchStations(client *OAuthClient, rateLimiter *time.Ticker) {
 			log.Println("[STATIONS] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchStationsPage(client, currentPage, rateLimiter)
+		isLastPage := fetchStationsPage(ctx, client, currentPage, rateLimiter)
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)

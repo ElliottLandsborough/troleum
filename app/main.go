@@ -61,16 +61,16 @@ func main() {
 	defer rateLimiter.Stop()
 
 	// Start continuous fetching in a goroutine
-	go continuousFetchStations(client, rateLimiter)
+	go continuousFetchStations(ctx, client, rateLimiter)
 
 	// Start continuous fetching of prices in a goroutine
-	go continuousFetchPrices(client, rateLimiter)
+	go continuousFetchPrices(ctx, client, rateLimiter)
 
-	// Start continuous fetching of prices in a goroutine
-	go continuousUpdateCachedFuelTypes()
+	// Start continuous fuel types cache updates in a goroutine
+	go continuousUpdateCachedFuelTypes(ctx)
 
 	// Start retry worker in a goroutine
-	go retryWorker(client, rateLimiter)
+	go retryWorker(ctx, client, rateLimiter)
 
 	// Keep main running and allow for other code
 	log.Println("Started continuous data fetching...")
