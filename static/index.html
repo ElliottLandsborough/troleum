@@ -19,6 +19,7 @@
         #map {
             width: 100%;
             height: 100%;
+            height: calc(100% - 64px);
         }
 
         .info-window {
@@ -63,9 +64,57 @@
         .gm-style-iw-chr {
             height: 0px;
         }
+
+        .top-nav {
+            height: 64px;
+        }
+
+        .top-nav #location-input {
+            height: 64px;
+            width: calc(100% - 64px - 64px);
+            font-size: 20px;
+            line-height: 64px;
+            padding: 20px;
+            float: left;
+        }
+
+        .top-nav #my-location {
+            height: 64px;
+            width: 64px;
+            font-size: 24px;
+            line-height: 64px;
+            cursor: pointer;
+            float: left;
+        }
+
+        .top-nav #menu-toggle {
+            height: 64px;
+            width: 64px;
+            cursor: pointer;
+            float: left;
+            line-height: 64px;
+            padding-top: 8px;
+        }
+
+        .top-nav #menu-toggle svg {
+            width: 45px;
+            height: 45px;
+        }
     </style>
 </head>
 <body>
+    <div class="top-nav">
+        <!-- button to center map on user's current location -->
+        <button id="my-location" title="Click to center map on your current location" onclick="centerMapOnUserLocation()">📍</button>
+        <input id="location-input" title="Enter a location" type="text" placeholder="Enter a location" />
+        <button id="menu-toggle" title="Toggle menu">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 18L20 18" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4 12L20 12" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4 6L20 6" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </button>
+    </div>
     <div id="map"></div>
 
     <script>
@@ -131,6 +180,71 @@
                     }
                 }, 200);
             });
+
+            // Constantly update a blue dot on the map showing the user's current location, and center the map on it when the page loads
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition((position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    // Create or update a marker for the user's location
+                    if (!markersById.has('user-location')) {
+                        const userMarker = new google.maps.Marker({
+                            position: { lat, lng: lon },
+                            map: map,
+                            title: 'Your Location',
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 8,
+                                fillColor: '#4285F4',
+                                fillOpacity: 1,
+                                strokeColor: '#ffffff',
+                                strokeWeight: 2,
+                            },
+                        });
+                        markersById.set('user-location', userMarker);
+                    } else {
+                        const userMarker = markersById.get('user-location');
+                        userMarker.setPosition({ lat, lng: lon });
+                    }
+                });
+            }
+
+            const input = document.getElementById("location-input");
+
+            const autocomplete = new google.maps.places.Autocomplete(input);
+
+            autocomplete.bindTo("bounds", map);
+
+            autocomplete.setComponentRestrictions({ country: "uk" });
+            autocomplete.setBounds(map.getBounds());
+
+            //const marker = new google.maps.Marker({
+            //    map: map,
+            //});
+
+            autocomplete.addListener("place_changed", () => {
+                const place = autocomplete.getPlace();
+
+                if (!place.geometry) {
+                alert("No details available for this location");
+                return;
+                }
+
+                // Center map on selected place
+                if (place.geometry.viewport) {
+                    map.fitBounds(place.geometry.viewport);
+                    map.setZoom(14);
+                } else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(14);
+                }
+
+                // Move marker
+                //marker.setPosition(place.geometry.location);
+            });
+
+            centerMapOnUserLocation();
         }
 
         function syncMarkerCollections() {
@@ -154,6 +268,7 @@
 
             // Remove markers that are no longer in the latest results.
             markersById.forEach((marker, id) => {
+                if (id === 'user-location') return; // never remove the user location marker
                 if (!nextIds.has(id)) {
                     marker.setMap(null);
                     markersById.delete(id);
@@ -170,6 +285,7 @@
 
             pinList.forEach(pin => {
                 const id = String(pin.id);
+                if (id === 'user-location') return; // never overwrite the user location marker
                 const infoContent = `
                     <div class="info-window">
                         <h3>${pin.name}</h3>
@@ -337,9 +453,35 @@
                 marker.setVisible(visible);
             });
         }
+
+        // Function to get the user's current location and center the map on it
+        function centerMapOnUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    map.setCenter({ lat, lng: lon });
+                    map.setZoom(14);
+
+                    // update the location input with the user's current location using reverse geocoding
+                    const geocoder = new google.maps.Geocoder();
+                    geocoder.geocode({ location: { lat, lng: lon } }, (results, status) => {
+                        if (status === 'OK' && results[0]) {
+                            document.getElementById('location-input').value = results[0].formatted_address;
+                        } else {
+                            console.warn('Reverse geocoding failed:', status);
+                        }
+                    });
+                }, (error) => {
+                    console.warn(`User denied geolocation or an error occurred (${error.message}), cannot center map on user location`);
+                });
+            } else {
+                console.warn('Geolocation is not supported by this browser, cannot center map on user location');
+            }
+        }
     </script>
 
     <!-- Load Google Maps API -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ&callback=initMap" async defer></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ&callback=initMap&libraries=places" async defer></script>
 </body>
 </html>
