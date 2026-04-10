@@ -72,6 +72,19 @@
 
     <script src="main.js"></script>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZBhqOIrxogvyAYko5uFbl7kH9nR28HS0&callback=initMap&libraries=places&loading=async" async defer></script>
+    <script>
+        const defaultMapsApiKey = 'AIzaSyBZBhqOIrxogvyAYko5uFbl7kH9nR28HS0'; // limited to server ip address
+        const localMapsApiKey = 'AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ'; // limited to wan ip address
+        const isLocal127 = window.location.protocol === 'http:' &&
+            window.location.hostname === '127.0.0.1' &&
+            window.location.port === '8080';
+
+        const mapsApiKey = isLocal127 ? localMapsApiKey : defaultMapsApiKey;
+        const mapsScript = document.createElement('script');
+        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(mapsApiKey)}&callback=initMap&libraries=places,marker&loading=async`;
+        mapsScript.async = true;
+        mapsScript.defer = true;
+        document.body.appendChild(mapsScript);
+    </script>
 </body>
 </html>
