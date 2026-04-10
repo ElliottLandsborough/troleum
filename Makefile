@@ -1,5 +1,5 @@
 # Name of the Docker image
-IMAGE_NAME = petroleum-app:latest
+IMAGE_NAME = troleum-app:latest
 
 # Remote host architecture (current server is amd64)
 REMOTE_PLATFORM = linux/amd64
