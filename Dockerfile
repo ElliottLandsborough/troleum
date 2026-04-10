@@ -61,8 +61,11 @@ COPY --from=builder --chown=appuser:appuser --chmod=555 /app/main .
 # Copy static/web files (read-only)
 COPY --chown=appuser:appuser --chmod=555 static ./static
 
-# Create json directory with write permissions for data persistence
-RUN mkdir -p json && chown appuser:appuser json && chmod 755 json
+# Ensure runtime paths are writable by the non-root user
+RUN mkdir -p /app/json && chown -R appuser:appuser /app && chmod 755 /app/json
+
+# Run as non-root user
+USER appuser:appuser
 
 # Run the binary
 CMD ["./main"]
