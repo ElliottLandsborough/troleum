@@ -243,18 +243,18 @@ func loadDataFromAllCachedPageResponses() {
 func removeMissingStations() {
 	nodeIds := make([]string, 0)
 
-	log.Printf("[CLEANUP] Collecting node IDs from cached price pages to identify which stations are still active.")
+	log.Printf("[CLEANUP] Collecting node IDs from cached station pages to identify which stations are still active.")
 
-	// Snapshot the price pages while locked to avoid race condition
-	savedPricesPagesMutex.Lock()
-	pricePagesCopy := make(map[int]ResponseCache)
-	for pageNum, cache := range savedPricesPages {
-		pricePagesCopy[pageNum] = cache
+	// Snapshot the station pages while locked to avoid race conditions.
+	savedStationsPagesMutex.Lock()
+	stationPagesCopy := make(map[int]ResponseCache)
+	for pageNum, cache := range savedStationsPages {
+		stationPagesCopy[pageNum] = cache
 	}
-	savedPricesPagesMutex.Unlock()
+	savedStationsPagesMutex.Unlock()
 
 	// Process snapshot outside the lock
-	for pageNum, cache := range pricePagesCopy {
+	for pageNum, cache := range stationPagesCopy {
 		stationList, err := processJSONArray[Station](cache.Data, pageNum, RequestTypeStationsPage)
 		if err != nil {
 			log.Printf("[ENRICH] Error processing cached station data for page %d during index reset: %v", pageNum, err)
@@ -336,7 +336,10 @@ func removeMissingNodeIDs(nodeIds []string) {
 	removePriceStationsNotInSet(nodeIdSet)
 	removeStationLocationsNotInSet(nodeIdSet)
 
-	log.Printf("[CLEANUP] Finished removing missing stations. Current station count: %d", len(stations))
+	stationsMutex.Lock()
+	stationCount := len(stations)
+	stationsMutex.Unlock()
+	log.Printf("[CLEANUP] Finished removing missing stations. Current station count: %d", stationCount)
 }
 
 func removeStationsNotInSet(nodeIdSet map[string]struct{}) {

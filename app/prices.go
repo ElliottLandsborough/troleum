@@ -69,11 +69,13 @@ func normalizePriceStationsFuelPrices(priceStationsList []PriceStation) int {
 
 // Update the fuel types cache with the latest unique fuel types from all stations in memory
 func updateFuelTypesCache() {
-	fuelTypesCacheMutex.Lock()
-	defer fuelTypesCacheMutex.Unlock()
+	priceStationsMutex.Lock()
+	priceStationsSnapshot := make([]PriceStation, len(priceStations))
+	copy(priceStationsSnapshot, priceStations)
+	priceStationsMutex.Unlock()
 
 	fuelTypeSet := make(map[string]struct{})
-	for _, station := range priceStations {
+	for _, station := range priceStationsSnapshot {
 		for _, price := range station.FuelPrices {
 			fuelTypeSet[price.FuelType] = struct{}{}
 		}
@@ -83,8 +85,12 @@ func updateFuelTypesCache() {
 	for fuelType := range fuelTypeSet {
 		fuelTypes = append(fuelTypes, fuelType)
 	}
+	fuelTypeCount := len(fuelTypes)
+
+	fuelTypesCacheMutex.Lock()
 	fuelTypesCache = fuelTypes
-	log.Printf("[CACHE] Updated fuel types cache with %d unique fuel types", len(fuelTypesCache))
+	fuelTypesCacheMutex.Unlock()
+	log.Printf("[CACHE] Updated fuel types cache with %d unique fuel types", fuelTypeCount)
 }
 
 // Get the current list of unique fuel types from the cache
