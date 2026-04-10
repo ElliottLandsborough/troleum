@@ -53,6 +53,8 @@
         let markers = [];
         let locations = [];
         let infoWindows = [];
+        let markersById = new Map();
+        let infoWindowsById = new Map();
         let debounceTimer = null;
         let abortController = null;
 
@@ -111,27 +113,43 @@
             });
         }
 
+        function syncMarkerCollections() {
+            markers = Array.from(markersById.values());
+            infoWindows = Array.from(infoWindowsById.values());
+        }
+
         function clearMarkers() {
-            markers.forEach(marker => marker.setMap(null));
-            markers = [];
-            infoWindows = [];
+            markersById.forEach(marker => marker.setMap(null));
+            infoWindowsById.forEach(infoWindow => infoWindow.close());
+            markersById.clear();
+            infoWindowsById.clear();
+            syncMarkerCollections();
         }
 
         function renderPins(pins) {
-            console.log(`Fetched ${pins.data.length} pins from the server`);
-    
-            clearMarkers();
+            const pinList = Array.isArray(pins?.data) ? pins.data : [];
+            console.log(`Fetched ${pinList.length} pins from the server`);
+
+            const nextIds = new Set(pinList.map(pin => String(pin.id)));
+
+            // Remove markers that are no longer in the latest results.
+            markersById.forEach((marker, id) => {
+                if (!nextIds.has(id)) {
+                    marker.setMap(null);
+                    markersById.delete(id);
+
+                    const infoWindow = infoWindowsById.get(id);
+                    if (infoWindow) {
+                        infoWindow.close();
+                        infoWindowsById.delete(id);
+                    }
+                }
+            });
 
             const bounds = new google.maps.LatLngBounds();
 
-            pins.data.forEach(pin => {
-                const marker = new google.maps.Marker({
-                    position: { lat: pin.lat, lng: pin.lng },
-                    map: map,
-                    title: pin.name,
-                    //animation: google.maps.Animation.DROP
-                });
-
+            pinList.forEach(pin => {
+                const id = String(pin.id);
                 const infoContent = `
                     <div class="info-window">
                         <h3>${pin.name}</h3>
@@ -140,20 +158,44 @@
                     </div>
                 `;
 
+                if (markersById.has(id)) {
+                    // Keep existing marker and update mutable fields.
+                    const existingMarker = markersById.get(id);
+                    existingMarker.setPosition({ lat: pin.lat, lng: pin.lng });
+                    existingMarker.setTitle(pin.name || '');
+
+                    const existingInfoWindow = infoWindowsById.get(id);
+                    if (existingInfoWindow) {
+                        existingInfoWindow.setContent(infoContent);
+                    }
+
+                    bounds.extend(existingMarker.getPosition());
+                    return;
+                }
+
+                const marker = new google.maps.Marker({
+                    position: { lat: pin.lat, lng: pin.lng },
+                    map: map,
+                    title: pin.name,
+                    //animation: google.maps.Animation.DROP
+                });
+
                 const infoWindow = new google.maps.InfoWindow({
                     content: infoContent
                 });
 
                 marker.addListener('click', function() {
-                    infoWindows.forEach(iw => iw.close());
+                    infoWindowsById.forEach(iw => iw.close());
                     infoWindow.open(map, marker);
                 });
 
                 bounds.extend(marker.getPosition());
 
-                markers.push(marker);
-                infoWindows.push(infoWindow);
+                markersById.set(id, marker);
+                infoWindowsById.set(id, infoWindow);
             });
+
+            syncMarkerCollections();
 
             // Fit map to show all markers
             //map.fitBounds(bounds);
@@ -267,13 +309,6 @@
 
             // Fit map to show all markers
             map.fitBounds(bounds);
-        }
-
-        // Helper function to clear all markers
-        function clearMarkers() {
-            markers.forEach(marker => marker.setMap(null));
-            markers = [];
-            infoWindows = [];
         }
 
         // Helper function to show/hide markers
