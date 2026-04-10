@@ -4,6 +4,9 @@ IMAGE_NAME = troleum-app:latest
 # Remote host architecture (current server is amd64)
 REMOTE_PLATFORM = linux/amd64
 
+# Remote host user UID:GID for the deploy user
+REMOTE_UID = 1001:1001
+
 # App container name
 APP_CONTAINER_NAME = troleum_app
 
@@ -92,6 +95,6 @@ send-image:
 .PHONY: run-remote
 run-remote:
 	ssh troleumdeploy "docker kill troleum_app || true && docker rm -f troleum_app || true"
-	ssh troleumdeploy "docker load -i /home/deploy/troleum/troleum_image.tar && docker rm -f $(APP_CONTAINER_NAME) || true && docker run --user $(id -u deploy):$(id -g deploy) -d --restart always --platform $(REMOTE_PLATFORM) -p 8080:8080 -v /home/deploy/troleum/json:/app/json:Z --name $(APP_CONTAINER_NAME) --env-file /home/deploy/troleum/.env $(IMAGE_NAME)"
+	ssh troleumdeploy "docker load -i /home/deploy/troleum/troleum_image.tar && docker rm -f $(APP_CONTAINER_NAME) || true && docker run --user $(REMOTE_UID) -d --restart always --platform $(REMOTE_PLATFORM) -p 8080:8080 -v /home/deploy/troleum/json:/app/json:Z --name $(APP_CONTAINER_NAME) --env-file /home/deploy/troleum/.env $(IMAGE_NAME)"
 	ssh troleumdeploy "rm -f /home/deploy/troleum/troleum_image.tar"
 	ssh troleumdeploy "docker logs -f $(APP_CONTAINER_NAME)"
