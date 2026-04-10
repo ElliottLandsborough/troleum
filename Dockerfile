@@ -1,8 +1,8 @@
 # Dev with more debug packages
-FROM golang:1.26 AS builder
+#FROM golang:1.26 AS builder
 
 # Produce a smaller image for production
-#FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Create app directory
 WORKDIR /app
@@ -28,27 +28,27 @@ COPY app/webServer.go /app/
 RUN ls -alh /app
 
 # Build the binary (with debug optimizations)
-RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
+#RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
 
 # Build the binary with production optimizations
-#ENV CGO_ENABLED=0
-#RUN go build -ldflags="-s -w" -trimpath -o main .
+ENV CGO_ENABLED=0
+RUN go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
 # PROD
-#FROM alpine:latest
+FROM alpine:latest
 # DEV - we need debian for debugging tools and to avoid musl issues
-FROM debian:bookworm-slim
+#FROM debian:bookworm-slim
 
 # Create a non-root user to run the app securely (alpine syntax)
-#RUN addgroup -g 1000 appuser && \
-#    adduser -D -u 1000 -G appuser appuser
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
 
 # Create non-root user (Debian syntax)
-RUN groupadd -g 1000 appuser && \
-    useradd -u 1000 -g appuser -s /bin/bash -m appuser
+#RUN groupadd -g 1000 appuser && \
+#    useradd -u 1000 -g appuser -s /bin/bash -m appuser
 # Install CA certificates for HTTPS requests (Debian only, not needed in alpine since it's included in the base image)
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
