@@ -628,6 +628,9 @@ async function showRouteForStation(markerId) {
         return;
     }
 
+    infoWindowsById.forEach(iw => iw.close());
+    updateSelectedLocationListItem(null);
+
     const pin = getPinById(markerId);
     if (!pin || pin.lat == null || pin.lng == null) {
         return;
@@ -665,8 +668,6 @@ async function showRouteForStation(markerId) {
             renderPins(latestPins);
             renderStationInfo(latestPins);
         }
-
-        openStationInfoWindow(pin.id);
     } catch (err) {
         console.error(err);
         alert('Could not calculate a driving route for this station.');
