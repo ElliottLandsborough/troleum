@@ -192,7 +192,11 @@ body.info-closed #info {
 .top-nav #my-location {
     height: 64px;
     width: 64px;
-    line-height: 64px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
     cursor: pointer;
     float: left;
 }
@@ -200,20 +204,26 @@ body.info-closed #info {
 .top-nav #my-location .location-icon {
     width: 28px;
     height: 28px;
-    vertical-align: middle;
+    display: block;
 }
 
-.top-nav #my-location .location-icon-loading {
+.top-nav #my-location .location-spinner {
     display: none;
+    width: 24px;
+    height: 24px;
+    border: 2.5px solid #111;
+    border-right-color: transparent;
+    border-radius: 50%;
+    box-sizing: border-box;
 }
 
 .top-nav #my-location.is-locating .location-icon-pin {
     display: none;
 }
 
-.top-nav #my-location.is-locating .location-icon-loading {
-    display: inline-block;
-    animation: locating-spin 0.9s linear infinite;
+.top-nav #my-location.is-locating .location-spinner {
+    display: block;
+    animation: locating-spin 0.85s linear infinite;
 }
 
 @keyframes locating-spin {
