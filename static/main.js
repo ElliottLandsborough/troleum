@@ -28,6 +28,103 @@ let isFollowingMyLocation = true;
 let pendingFollowMeLocationRequest = false;
 let selectedStationMarkerId = null;
 const GOOGLE_MAPS_MAP_ID = '570b6285826fd5d96eb33627';
+const INFO_PANEL_STORAGE_KEY = 'troleum_info_panel_open';
+const INFO_PANEL_MOBILE_BREAKPOINT = 900;
+let isInfoPanelOpen = true;
+
+function isMobileLayout() {
+    return window.innerWidth <= INFO_PANEL_MOBILE_BREAKPOINT;
+}
+
+function loadInfoPanelState() {
+    const storedValue = localStorage.getItem(INFO_PANEL_STORAGE_KEY);
+    if (storedValue === 'open') {
+        isInfoPanelOpen = true;
+        return;
+    }
+
+    if (storedValue === 'closed') {
+        isInfoPanelOpen = false;
+        return;
+    }
+
+    isInfoPanelOpen = !isMobileLayout();
+}
+
+function persistInfoPanelState() {
+    localStorage.setItem(INFO_PANEL_STORAGE_KEY, isInfoPanelOpen ? 'open' : 'closed');
+}
+
+function applyInfoPanelState() {
+    const body = document.body;
+    const menuToggle = document.getElementById('menu-toggle');
+
+    if (!body || !menuToggle) {
+        return;
+    }
+
+    const mobile = isMobileLayout();
+
+    body.classList.toggle('mobile-layout', mobile);
+    body.classList.toggle('desktop-layout', !mobile);
+    body.classList.toggle('info-open', isInfoPanelOpen);
+    body.classList.toggle('info-closed', !isInfoPanelOpen);
+
+    menuToggle.setAttribute('aria-expanded', String(isInfoPanelOpen));
+    menuToggle.setAttribute('aria-label', isInfoPanelOpen ? 'Hide station list panel' : 'Show station list panel');
+}
+
+function setInfoPanelOpen(isOpen) {
+    isInfoPanelOpen = isOpen;
+    persistInfoPanelState();
+    applyInfoPanelState();
+}
+
+function toggleInfoPanel() {
+    setInfoPanelOpen(!isInfoPanelOpen);
+}
+
+function initInfoPanelControls() {
+    const menuToggle = document.getElementById('menu-toggle');
+    const infoPanel = document.getElementById('info');
+
+    if (!menuToggle || !infoPanel) {
+        return;
+    }
+
+    menuToggle.addEventListener('click', event => {
+        event.preventDefault();
+        toggleInfoPanel();
+    });
+
+    window.addEventListener('resize', () => {
+        applyInfoPanelState();
+    });
+
+    document.addEventListener('pointerdown', event => {
+        if (!isMobileLayout() || !isInfoPanelOpen) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof Node)) {
+            return;
+        }
+
+        if (!infoPanel.contains(target) && !menuToggle.contains(target)) {
+            setInfoPanelOpen(false);
+        }
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && isInfoPanelOpen) {
+            setInfoPanelOpen(false);
+        }
+    });
+
+    loadInfoPanelState();
+    applyInfoPanelState();
+}
 
 function createMapMarkerContent(pinOptions = {}) {
     const PinElement = google.maps.marker?.PinElement || google.maps.PinElement;
@@ -1018,6 +1115,8 @@ function centerMapOnUserLocation() {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateFollowMeUI();
+    initInfoPanelControls();
 });
 
 window.showRouteForStation = showRouteForStation;
+window.toggleInfoPanel = toggleInfoPanel;
