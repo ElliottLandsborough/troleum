@@ -28,7 +28,28 @@ let isFollowingMyLocation = true;
 let pendingFollowMeLocationRequest = false;
 let selectedStationMarkerId = null;
 const GOOGLE_MAPS_MAP_ID = '570b6285826fd5d96eb33627';
-const GEOLOCATE_TIMEOUT_MS = 15000;
+const GEOLOCATE_TIMEOUT_MS = 30000;
+const GEOLOCATION_REQUEST_OPTIONS = {
+    enableHighAccuracy: true,
+    timeout: GEOLOCATE_TIMEOUT_MS,
+    maximumAge: 120000,
+};
+const GEOLOCATION_CACHED_FIRST_OPTIONS = {
+    enableHighAccuracy: false,
+    timeout: 1500,
+    maximumAge: 1800000,
+};
+const GEOLOCATION_FALLBACK_OPTIONS = {
+    enableHighAccuracy: false,
+    timeout: 2000,
+    maximumAge: 900000,
+};
+const GEOLOCATION_WATCH_OPTIONS = {
+    enableHighAccuracy: false,
+    // No explicit timeout here. On some mobile browsers watchPosition can
+    // repeatedly timeout and generate noisy errors even when permission is fine.
+    maximumAge: 120000,
+};
 const INFO_PANEL_STORAGE_KEY = 'troleum_info_panel_open';
 const INFO_PANEL_MOBILE_BREAKPOINT = 900;
 let isInfoPanelOpen = true;
@@ -62,9 +83,33 @@ function startLocatingUser() {
             return;
         }
 
-        isLocatingUser = false;
-        applyLocateButtonState();
         console.warn('Geolocation request timed out, location button re-enabled');
+
+        if (navigator.permissions?.query) {
+            navigator.permissions.query({ name: 'geolocation' }).then(result => {
+                console.warn(`[GEO] Permission state after timeout: ${result.state}`);
+            }).catch(() => {
+                // Ignore permissions API errors; not supported in some browsers.
+            });
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((position) => {
+                userLat = position.coords.latitude;
+                userLng = position.coords.longitude;
+                applyPendingFollowMeLocation(userLat, userLng);
+                stopLocatingUser();
+            }, (error) => {
+                // Cached fallback can legitimately timeout quickly when no cached position exists.
+                if (error?.code !== 3) {
+                    logGeolocationError('fallback getCurrentPosition', error);
+                }
+                stopLocatingUser();
+            }, GEOLOCATION_FALLBACK_OPTIONS);
+            return;
+        }
+
+        stopLocatingUser();
     }, GEOLOCATE_TIMEOUT_MS);
 
     applyLocateButtonState();
@@ -78,6 +123,25 @@ function stopLocatingUser() {
     }
 
     applyLocateButtonState();
+}
+
+function logGeolocationError(context, error) {
+    const code = error?.code;
+    const message = error?.message || 'Unknown geolocation error';
+
+    switch (code) {
+    case 1:
+        console.warn(`[GEO] ${context}: permission denied (${message})`);
+        break;
+    case 2:
+        console.warn(`[GEO] ${context}: position unavailable (${message})`);
+        break;
+    case 3:
+        console.warn(`[GEO] ${context}: request timed out (${message})`);
+        break;
+    default:
+        console.warn(`[GEO] ${context}: ${message}`);
+    }
 }
 
 function isMobileLayout() {
@@ -894,9 +958,12 @@ function initMap() {
             }
 
             applyPendingFollowMeLocation(lat, lon);
-        }, () => {
-            stopLocatingUser();
-        });
+        }, (error) => {
+            // Ignore watch timeout noise; user-triggered getCurrentPosition handles first-fix UX.
+            if (error?.code !== 3) {
+                logGeolocationError('watchPosition', error);
+            }
+        }, GEOLOCATION_WATCH_OPTIONS);
     }
 
     // Fire-and-forget preload: starts immediately but never blocks map/markers rendering.
@@ -1176,10 +1243,30 @@ function centerMapOnUserLocation() {
         startLocatingUser();
         console.warn('Attempting to get user location via Geolocation API...');
         document.getElementById('location-input').placeholder = 'Searching for your location, please wait';
+
         if (userLat !== null && userLng !== null) {
             applyPendingFollowMeLocation(userLat, userLng);
             stopLocatingUser();
+            return;
         }
+
+        // 1) Quick cached attempt first, then 2) longer live fix attempt.
+        navigator.geolocation.getCurrentPosition((position) => {
+            userLat = position.coords.latitude;
+            userLng = position.coords.longitude;
+            applyPendingFollowMeLocation(userLat, userLng);
+            stopLocatingUser();
+        }, () => {
+            navigator.geolocation.getCurrentPosition((position) => {
+                userLat = position.coords.latitude;
+                userLng = position.coords.longitude;
+                applyPendingFollowMeLocation(userLat, userLng);
+                stopLocatingUser();
+            }, (error) => {
+                logGeolocationError('getCurrentPosition', error);
+                stopLocatingUser();
+            }, GEOLOCATION_REQUEST_OPTIONS);
+        }, GEOLOCATION_CACHED_FIRST_OPTIONS);
     } else {
         stopLocatingUser();
         console.warn('Geolocation is not supported by this browser, cannot center map on user location');
