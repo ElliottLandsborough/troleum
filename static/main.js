@@ -11,6 +11,10 @@ let userLng = null;
 let routesApiRouteClass = null;
 let activeRoutePolylines = [];
 let routeDistanceMilesByStationId = new Map();
+let userLocationInfoWindow = null;
+let userEstimatedAddress = null;
+let searchLocationInfoWindow = null;
+let searchSetAddress = null;
 const USER_MARKER_Z_INDEX = 1000000;
 const FUEL_TYPE_DISPLAY_ORDER = [
     'E10',
@@ -165,13 +169,65 @@ function populateFollowMeLocationInput(lat, lng) {
 
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
         if (isFollowingMyLocation && status === 'OK' && results[0]) {
-            input.value = results[0].formatted_address;
+            userEstimatedAddress = results[0].formatted_address;
+            input.value = userEstimatedAddress;
         } else if (status !== 'OK') {
             console.warn('Reverse geocoding failed:', status);
         }
 
         input.placeholder = 'Enter a location';
     });
+}
+
+function getUserLocationInfoContent() {
+    const safeAddress = escapeHtml(userEstimatedAddress || 'Address unavailable');
+    return `
+        <div class="info-window">
+            <h3>Your estimated location</h3>
+            <p class="address">📍 ${safeAddress}</p>
+        </div>
+    `;
+}
+
+function openUserLocationInfoWindow() {
+    const userMarker = markersById.get('user-location');
+    if (!userMarker || !userLocationInfoWindow) {
+        return;
+    }
+
+    userLocationInfoWindow.setContent(getUserLocationInfoContent());
+    userLocationInfoWindow.open({ map, anchor: userMarker });
+}
+
+function populateSearchLocationAddress(lat, lng) {
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+            searchSetAddress = results[0].formatted_address;
+        } else if (status !== 'OK') {
+            console.warn('Search location reverse geocoding failed:', status);
+        }
+    });
+}
+
+function getSearchLocationInfoContent() {
+    const safeAddress = escapeHtml(searchSetAddress || 'Address unavailable');
+    return `
+        <div class="info-window">
+            <h3>Set location</h3>
+            <p class="address">📍 ${safeAddress}</p>
+        </div>
+    `;
+}
+
+function openSearchLocationInfoWindow() {
+    const searchMarker = markersById.get('search-location');
+    if (!searchMarker || !searchLocationInfoWindow) {
+        return;
+    }
+
+    searchLocationInfoWindow.setContent(getSearchLocationInfoContent());
+    searchLocationInfoWindow.open({ map, anchor: searchMarker });
 }
 
 function applyPendingFollowMeLocation(lat, lng) {
@@ -658,6 +714,16 @@ function initMap() {
                     },
                 });
                 markersById.set('user-location', userMarker);
+
+                if (!userLocationInfoWindow) {
+                    userLocationInfoWindow = new google.maps.InfoWindow({
+                        content: getUserLocationInfoContent(),
+                    });
+                }
+
+                addMarkerClickListener(userMarker, () => {
+                    openUserLocationInfoWindow();
+                });
             } else {
                 const userMarker = markersById.get('user-location');
                 setMarkerPosition(userMarker, { lat, lng: lon });
@@ -742,6 +808,10 @@ function initMap() {
 
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
+        searchSetAddress = place.formatted_address || place.name || null;
+        if (!searchSetAddress) {
+            populateSearchLocationAddress(lat, lng);
+        }
 
         if (!markersById.has('search-location')) {
             const searchMarker = createMapMarker({
@@ -767,6 +837,16 @@ function initMap() {
                 },
             });
             markersById.set('search-location', searchMarker);
+
+            if (!searchLocationInfoWindow) {
+                searchLocationInfoWindow = new google.maps.InfoWindow({
+                    content: getSearchLocationInfoContent(),
+                });
+            }
+
+            addMarkerClickListener(searchMarker, () => {
+                openSearchLocationInfoWindow();
+            });
         } else {
             const searchMarker = markersById.get('search-location');
             setMarkerPosition(searchMarker, { lat, lng });
