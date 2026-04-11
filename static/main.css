@@ -197,6 +197,10 @@ body {
     float: left;
 }
 
+.top-nav #search-mode-toggle:disabled {
+    cursor: not-allowed;
+}
+
 .top-nav #menu-toggle {
     height: 64px;
     width: 64px;

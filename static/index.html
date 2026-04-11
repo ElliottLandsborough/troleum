@@ -19,7 +19,6 @@
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Troleum fuel price comparison app interface showing nearby petrol stations">
 
-
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Troleum | UK Fuel Price Comparison Near You">
     <meta name="twitter:description" content="Compare UK petrol and diesel prices near you with live station data.">
@@ -81,7 +80,7 @@
 
         const mapsApiKey = isLocal127 ? localMapsApiKey : defaultMapsApiKey;
         const mapsScript = document.createElement('script');
-        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(mapsApiKey)}&callback=initMap&libraries=places,marker&loading=async`;
+        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(mapsApiKey)}&callback=initMap&libraries=places,marker,routes&loading=async`;
         mapsScript.async = true;
         mapsScript.defer = true;
         document.body.appendChild(mapsScript);

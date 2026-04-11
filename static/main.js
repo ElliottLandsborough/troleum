@@ -8,6 +8,9 @@ let debounceTimer = null;
 let abortController = null;
 let userLat = null;
 let userLng = null;
+let routesApiRouteClass = null;
+let activeRoutePolylines = [];
+let routeDistanceMilesByStationId = new Map();
 const USER_MARKER_Z_INDEX = 1000000;
 const FUEL_TYPE_DISPLAY_ORDER = [
     'E10',
@@ -138,20 +141,20 @@ function updateFollowMeUI() {
     const toggleBtn = document.getElementById('search-mode-toggle');
 
     if (isFollowingMyLocation) {
-        btn.style.opacity = '1';
+        btn.style.opacity = '0.5';
         btn.style.cursor = 'pointer';
         input.disabled = true;
         input.style.opacity = '0.5';
         toggleBtn.style.opacity = '0.5';
-        toggleBtn.style.cursor = 'not-allowed';
+        //toggleBtn.style.cursor = 'not-allowed';
         toggleBtn.disabled = false;
     } else {
         btn.style.opacity = '1';
         btn.style.cursor = 'pointer';
         input.disabled = false;
         input.style.opacity = '1';
-        toggleBtn.style.opacity = '0.5';
-        toggleBtn.style.cursor = 'not-allowed';
+        toggleBtn.style.opacity = '1';
+        //toggleBtn.style.cursor = 'not-allowed';
         toggleBtn.disabled = true;
     }
 }
@@ -189,9 +192,9 @@ function setFollowMeMode() {
 
     markersById.forEach((marker, id) => {
         if (id === 'search-location') {
-            marker.setVisible(false);
+            setMarkerVisible(marker, false);
         } else if (id === 'user-location') {
-            marker.setVisible(true);
+            setMarkerVisible(marker, true);
         }
     });
 
@@ -203,9 +206,9 @@ function setSearchLocationMode(lat, lng) {
 
     markersById.forEach((marker, id) => {
         if (id === 'user-location') {
-            marker.setVisible(false);
+            setMarkerVisible(marker, false);
         } else if (id === 'search-location') {
-            marker.setVisible(true);
+            setMarkerVisible(marker, true);
         }
     });
 
@@ -218,7 +221,7 @@ function toggleSearchMode() {
         isFollowingMyLocation = false;
         markersById.forEach((marker, id) => {
             if (id === 'user-location') {
-                marker.setVisible(false);
+                setMarkerVisible(marker, false);
             }
         });
         updateFollowMeUI();
@@ -367,6 +370,149 @@ function getDistanceHtml(distance, isDistanceSelected) {
     return `<span class="title">📏 Distance: </span>${safeValueText}`;
 }
 
+function getDistanceHtmlForPin(pin, isDistanceSelected) {
+    const routeDistance = routeDistanceMilesByStationId.get(String(pin?.id));
+    if (routeDistance != null) {
+        return getDistanceHtml(routeDistance, isDistanceSelected).replace('Distance:', 'Route distance:');
+    }
+
+    return getDistanceHtml(pin?.distance, isDistanceSelected);
+}
+
+function formatMilesFromMeters(meters) {
+    if (!Number.isFinite(meters)) {
+        return null;
+    }
+
+    return meters * 0.000621371;
+}
+
+function clearActiveRoutePolylines() {
+    activeRoutePolylines.forEach(polyline => {
+        polyline.setMap(null);
+    });
+    activeRoutePolylines = [];
+}
+
+function extractRouteDistanceMiles(route) {
+    const legs = Array.isArray(route?.legs) ? route.legs : [];
+    const totalMeters = legs.reduce((sum, leg) => {
+        const meters = Number(leg?.distanceMeters);
+        return Number.isFinite(meters) ? sum + meters : sum;
+    }, 0);
+
+    if (totalMeters > 0) {
+        return formatMilesFromMeters(totalMeters);
+    }
+
+    return null;
+}
+
+function getCurrentRouteOrigin() {
+    if (isFollowingMyLocation && userLat != null && userLng != null) {
+        return { lat: userLat, lng: userLng };
+    }
+
+    const searchMarker = markersById.get('search-location');
+    if (searchMarker && !isFollowingMyLocation) {
+        const position = getMarkerPosition(searchMarker);
+        if (position) {
+            const lat = typeof position.lat === 'function' ? position.lat() : position.lat;
+            const lng = typeof position.lng === 'function' ? position.lng() : position.lng;
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                return { lat, lng };
+            }
+        }
+    }
+
+    if (userLat != null && userLng != null) {
+        return { lat: userLat, lng: userLng };
+    }
+
+    return null;
+}
+
+function getPinById(markerId) {
+    const pinList = Array.isArray(latestPins?.data) ? latestPins.data : [];
+    return pinList.find(pin => String(pin.id) === String(markerId)) || null;
+}
+
+async function initDirections() {
+    const { Route } = await google.maps.importLibrary('routes');
+    routesApiRouteClass = Route;
+}
+
+async function requestRoute(origin, destination) {
+    if (!routesApiRouteClass) {
+        throw new Error('Routes API is not initialized yet');
+    }
+
+    const request = {
+        origin,
+        destination,
+        travelMode: 'DRIVING',
+        fields: ['legs', 'path', 'viewport'],
+    };
+
+    const result = await routesApiRouteClass.computeRoutes(request);
+    if (!result?.routes || result.routes.length === 0) {
+        throw new Error('No routes found');
+    }
+
+    return result.routes[0];
+}
+
+async function showRouteForStation(markerId) {
+    if (!routesApiRouteClass) {
+        console.warn('Routes API is not initialized yet');
+        return;
+    }
+
+    const pin = getPinById(markerId);
+    if (!pin || pin.lat == null || pin.lng == null) {
+        return;
+    }
+
+    const origin = getCurrentRouteOrigin();
+    if (!origin) {
+        alert('Location not available yet. Please allow location access or search for a location first.');
+        return;
+    }
+
+    try {
+        const route = await requestRoute(origin, { lat: pin.lat, lng: pin.lng });
+        const routeMiles = extractRouteDistanceMiles(route);
+
+        clearActiveRoutePolylines();
+        activeRoutePolylines = route.createPolylines({
+            strokeColor: '#1A73E8',
+            strokeOpacity: 0.9,
+            strokeWeight: 6,
+        });
+        activeRoutePolylines.forEach(polyline => {
+            polyline.setMap(map);
+        });
+
+        if (route.viewport) {
+            map.fitBounds(route.viewport, 50);
+        }
+
+        if (routeMiles != null) {
+            routeDistanceMilesByStationId.set(String(pin.id), routeMiles);
+        }
+
+        if (latestPins) {
+            renderPins(latestPins);
+            renderStationInfo(latestPins);
+        }
+
+        openStationInfoWindow(pin.id);
+    } catch (err) {
+        console.error(err);
+        alert('Could not calculate a driving route for this station.');
+    }
+}
+
 function updateSortOptionsFromPins(pinList) {
     const sortSelect = document.getElementById('sort-options');
     const previousValue = sortSelect.value || 'distance';
@@ -471,6 +617,10 @@ function initMap() {
         mapTypeControl: true,
         streetViewControl: false,
         //renderingType: RenderingType.VECTOR,
+    });
+
+    initDirections().catch(err => {
+        console.error('Failed to initialize Routes API:', err);
     });
 
     // Constantly update a blue dot on the map showing the user's current location, and center the map on it when the page loads
@@ -672,11 +822,12 @@ function renderPins(pins) {
         const infoContent = `
             <div class="info-window">
                 <h3>${pin.name}</h3><br />
-                <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p><br />
+                <p class="distance">${getDistanceHtmlForPin(pin, isDistanceSelected)}</p><br />
                 <div class="prices-header">⛽ Prices:</div>
                 <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table><br />
                 <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
-                <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p>
+                <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p><br />
+                <p><a href="#" onclick="showRouteForStation('${escapeHtml(String(pin.id))}'); return false;">Show driving route on map</a></p>
             </div>
         `;
 
@@ -742,8 +893,9 @@ function renderStationInfo(pins) {
         return `
         <div class="location-list-item" data-marker-id="${escapeHtml(String(pin.id))}">
             <h3>${pin.name}</h3>
-            <p class="distance">${getDistanceHtml(pin.distance, isDistanceSelected)}</p>
+            <p class="distance">${getDistanceHtmlForPin(pin, isDistanceSelected)}</p>
             <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td class="price-label">${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td class="price-value">${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table>
+            <p><a href="#" class="show-route-link" data-route-id="${escapeHtml(String(pin.id))}">Show driving route on map</a></p>
         </div>
     `;
     }).join('<hr>');
@@ -753,6 +905,14 @@ function renderStationInfo(pins) {
     infoDiv.querySelectorAll('.location-list-item').forEach(item => {
         item.addEventListener('click', () => {
             openStationInfoWindow(item.dataset.markerId);
+        });
+    });
+
+    infoDiv.querySelectorAll('.show-route-link').forEach(link => {
+        link.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRouteForStation(link.dataset.routeId);
         });
     });
 
@@ -779,3 +939,5 @@ function centerMapOnUserLocation() {
 document.addEventListener('DOMContentLoaded', function() {
     updateFollowMeUI();
 });
+
+window.showRouteForStation = showRouteForStation;
