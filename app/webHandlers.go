@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand/v2"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -136,10 +135,10 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No location provided, returning stations in original order")
 	}
 
-	// if there are more than 500 stations to be returned, select 500 random stations to return and log that we are doing this
-	if len(stationsToBeReturned) > 500 {
-		log.Printf("More than 1000 stations to be returned (%d), selecting 500 random stations to return", len(stationsToBeReturned))
-		stationsToBeReturned = selectRandomStations(stationsToBeReturned, 500)
+	// if there are more than 275 stations to be returned, keep only the first 275
+	if len(stationsToBeReturned) > 275 {
+		log.Printf("More than 275 stations to be returned (%d), returning first 275 stations", len(stationsToBeReturned))
+		stationsToBeReturned = selectFirstStations(stationsToBeReturned, 275)
 	}
 
 	// generate an API response with code 200, message "Success", and the stations data, and write it as pretty JSON to the response
@@ -167,17 +166,11 @@ func filterStationsByBoundingBox(stations []Station, minLat, minLng, maxLat, max
 	return filtered
 }
 
-func selectRandomStations(stations []Station, n int) []Station {
+func selectFirstStations(stations []Station, n int) []Station {
 	if len(stations) <= n {
 		return stations
 	}
-
-	selected := make([]Station, n)
-	perm := rand.Perm(len(stations))
-	for i := 0; i < n; i++ {
-		selected[i] = stations[perm[i]]
-	}
-	return selected
+	return stations[:n]
 }
 
 func formattedStationsForJS(stations []Station) []map[string]interface{} {
