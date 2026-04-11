@@ -136,10 +136,10 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No location provided, returning stations in original order")
 	}
 
-	// if there are more than 1000 stations to be returned, select 1000 random stations to return and log that we are doing this
-	if len(stationsToBeReturned) > 1000 {
-		log.Printf("More than 1000 stations to be returned (%d), selecting 1000 random stations to return", len(stationsToBeReturned))
-		stationsToBeReturned = selectRandomStations(stationsToBeReturned, 1000)
+	// if there are more than 500 stations to be returned, select 500 random stations to return and log that we are doing this
+	if len(stationsToBeReturned) > 500 {
+		log.Printf("More than 1000 stations to be returned (%d), selecting 500 random stations to return", len(stationsToBeReturned))
+		stationsToBeReturned = selectRandomStations(stationsToBeReturned, 500)
 	}
 
 	// generate an API response with code 200, message "Success", and the stations data, and write it as pretty JSON to the response
