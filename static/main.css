@@ -192,10 +192,38 @@ body.info-closed #info {
 .top-nav #my-location {
     height: 64px;
     width: 64px;
-    font-size: 24px;
     line-height: 64px;
     cursor: pointer;
     float: left;
+}
+
+.top-nav #my-location .location-icon {
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+}
+
+.top-nav #my-location .location-icon-loading {
+    display: none;
+}
+
+.top-nav #my-location.is-locating .location-icon-pin {
+    display: none;
+}
+
+.top-nav #my-location.is-locating .location-icon-loading {
+    display: inline-block;
+    animation: locating-spin 0.9s linear infinite;
+}
+
+@keyframes locating-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .top-nav #search-mode-toggle {

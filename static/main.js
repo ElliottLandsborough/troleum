@@ -28,9 +28,57 @@ let isFollowingMyLocation = true;
 let pendingFollowMeLocationRequest = false;
 let selectedStationMarkerId = null;
 const GOOGLE_MAPS_MAP_ID = '570b6285826fd5d96eb33627';
+const GEOLOCATE_TIMEOUT_MS = 15000;
 const INFO_PANEL_STORAGE_KEY = 'troleum_info_panel_open';
 const INFO_PANEL_MOBILE_BREAKPOINT = 900;
 let isInfoPanelOpen = true;
+let isLocatingUser = false;
+let locatingUserTimeoutId = null;
+
+function applyLocateButtonState() {
+    const btn = document.getElementById('my-location');
+    if (!btn) {
+        return;
+    }
+
+    btn.classList.toggle('is-locating', isLocatingUser);
+    btn.disabled = isLocatingUser;
+    if (isLocatingUser) {
+        btn.style.cursor = 'wait';
+        return;
+    }
+
+    btn.style.cursor = 'pointer';
+}
+
+function startLocatingUser() {
+    isLocatingUser = true;
+    if (locatingUserTimeoutId) {
+        clearTimeout(locatingUserTimeoutId);
+    }
+
+    locatingUserTimeoutId = setTimeout(() => {
+        if (!isLocatingUser) {
+            return;
+        }
+
+        isLocatingUser = false;
+        applyLocateButtonState();
+        console.warn('Geolocation request timed out, location button re-enabled');
+    }, GEOLOCATE_TIMEOUT_MS);
+
+    applyLocateButtonState();
+}
+
+function stopLocatingUser() {
+    isLocatingUser = false;
+    if (locatingUserTimeoutId) {
+        clearTimeout(locatingUserTimeoutId);
+        locatingUserTimeoutId = null;
+    }
+
+    applyLocateButtonState();
+}
 
 function isMobileLayout() {
     return window.innerWidth <= INFO_PANEL_MOBILE_BREAKPOINT;
@@ -250,7 +298,9 @@ function updateFollowMeUI() {
 
     if (isFollowingMyLocation) {
         btn.style.opacity = '0.5';
-        btn.style.cursor = 'pointer';
+        if (!isLocatingUser) {
+            btn.style.cursor = 'pointer';
+        }
         input.disabled = true;
         input.style.opacity = '0.5';
         toggleBtn.style.opacity = '0.5';
@@ -258,13 +308,17 @@ function updateFollowMeUI() {
         toggleBtn.disabled = false;
     } else {
         btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
+        if (!isLocatingUser) {
+            btn.style.cursor = 'pointer';
+        }
         input.disabled = false;
         input.style.opacity = '1';
         toggleBtn.style.opacity = '1';
         //toggleBtn.style.cursor = 'not-allowed';
         toggleBtn.disabled = true;
     }
+
+    applyLocateButtonState();
 }
 
 function populateFollowMeLocationInput(lat, lng) {
@@ -793,6 +847,7 @@ function initMap() {
             // Cache latest coordinates for station API requests.
             userLat = lat;
             userLng = lon;
+            stopLocatingUser();
 
             // Create or update a marker for the user's location
             if (!markersById.has('user-location')) {
@@ -839,6 +894,8 @@ function initMap() {
             }
 
             applyPendingFollowMeLocation(lat, lon);
+        }, () => {
+            stopLocatingUser();
         });
     }
 
@@ -1108,16 +1165,23 @@ function renderStationInfo(pins) {
 
 // Function to get the user's current location and center the map on it
 function centerMapOnUserLocation() {
+    if (isLocatingUser) {
+        return;
+    }
+
     setFollowMeMode();
     pendingFollowMeLocationRequest = true;
 
     if (navigator.geolocation) {
+        startLocatingUser();
         console.warn('Attempting to get user location via Geolocation API...');
         document.getElementById('location-input').placeholder = 'Searching for your location, please wait';
         if (userLat !== null && userLng !== null) {
             applyPendingFollowMeLocation(userLat, userLng);
+            stopLocatingUser();
         }
     } else {
+        stopLocatingUser();
         console.warn('Geolocation is not supported by this browser, cannot center map on user location');
         document.getElementById('location-input').placeholder = 'Enter a location';
     }
