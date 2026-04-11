@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -12,10 +13,23 @@ import (
 // Handler to serve the root index page
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+		serveNotFoundPage(w, r)
 		return
 	}
 	http.ServeFile(w, r, "static/index.html")
+}
+
+func serveNotFoundPage(w http.ResponseWriter, r *http.Request) {
+	content, err := os.ReadFile("static/404.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write(content)
 }
 
 func noStore(next http.Handler) http.Handler {
