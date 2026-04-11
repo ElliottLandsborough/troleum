@@ -135,10 +135,10 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No location provided, returning stations in original order")
 	}
 
-	// if there are more than 275 stations to be returned, keep only the first 275
-	if len(stationsToBeReturned) > 275 {
-		log.Printf("More than 275 stations to be returned (%d), returning first 275 stations", len(stationsToBeReturned))
-		stationsToBeReturned = selectFirstStations(stationsToBeReturned, 275)
+	// if there are more than 500 stations to be returned, keep only the first 500
+	if len(stationsToBeReturned) > 500 {
+		log.Printf("More than 500 stations to be returned (%d), returning first 500 stations", len(stationsToBeReturned))
+		stationsToBeReturned = selectFirstStations(stationsToBeReturned, 500)
 	}
 
 	// generate an API response with code 200, message "Success", and the stations data, and write it as pretty JSON to the response
