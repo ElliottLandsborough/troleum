@@ -141,14 +141,14 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No location provided, returning stations in original order")
 	}
 
-	// if there are more than 500 stations to be returned, select 500 random stations
-	if len(stationsToBeReturned) > 500 {
+	// if there are more than 100 stations to be returned, select 100 random stations
+	if len(stationsToBeReturned) > 100 {
 		if bboxProvided {
-			log.Printf("More than 500 stations in bbox (%d), selecting 500 stations with spatial spread and cheaper-price preference", len(stationsToBeReturned))
-			stationsToBeReturned = selectStationsForBoundingBox(stationsToBeReturned, 500, minLat, minLng, maxLat, maxLng)
+			log.Printf("More than 100 stations in bbox (%d), selecting 100 stations with spatial spread and cheaper-price preference", len(stationsToBeReturned))
+			stationsToBeReturned = selectStationsForBoundingBox(stationsToBeReturned, 100, minLat, minLng, maxLat, maxLng)
 		} else {
-			log.Printf("More than 500 stations to be returned (%d), selecting 500 random stations", len(stationsToBeReturned))
-			stationsToBeReturned = selectFirstStations(stationsToBeReturned, 500)
+			log.Printf("More than 100 stations to be returned (%d), selecting 100 random stations", len(stationsToBeReturned))
+			stationsToBeReturned = selectFirstStations(stationsToBeReturned, 100)
 		}
 	}
 
