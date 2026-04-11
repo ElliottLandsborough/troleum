@@ -85,6 +85,12 @@ function toggleInfoPanel() {
     setInfoPanelOpen(!isInfoPanelOpen);
 }
 
+function closeInfoPanelForMapInteraction() {
+    if (isMobileLayout() && isInfoPanelOpen) {
+        setInfoPanelOpen(false);
+    }
+}
+
 function initInfoPanelControls() {
     const menuToggle = document.getElementById('menu-toggle');
     const infoPanel = document.getElementById('info');
@@ -1083,6 +1089,7 @@ function renderStationInfo(pins) {
     infoDiv.querySelectorAll('.location-list-item').forEach(item => {
         item.addEventListener('click', () => {
             openStationInfoWindow(item.dataset.markerId);
+            closeInfoPanelForMapInteraction();
         });
     });
 
@@ -1090,6 +1097,7 @@ function renderStationInfo(pins) {
         link.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
+            closeInfoPanelForMapInteraction();
             showRouteForStation(link.dataset.routeId);
         });
     });
