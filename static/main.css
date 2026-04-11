@@ -221,9 +221,21 @@ body.info-closed #info {
     display: block;
 }
 
-.top-nav #menu-toggle svg {
+.top-nav #menu-toggle .menu-icon {
     width: 45px;
     height: 45px;
+}
+
+.top-nav #menu-toggle .menu-icon-close {
+    display: none;
+}
+
+.top-nav #menu-toggle.is-open .menu-icon-open {
+    display: none;
+}
+
+.top-nav #menu-toggle.is-open .menu-icon-close {
+    display: inline-block;
 }
 
 @media (max-width: 900px) {

@@ -69,6 +69,7 @@ function applyInfoPanelState() {
     body.classList.toggle('desktop-layout', !mobile);
     body.classList.toggle('info-open', isInfoPanelOpen);
     body.classList.toggle('info-closed', !isInfoPanelOpen);
+    menuToggle.classList.toggle('is-open', isInfoPanelOpen);
 
     menuToggle.setAttribute('aria-expanded', String(isInfoPanelOpen));
     menuToggle.setAttribute('aria-label', isInfoPanelOpen ? 'Hide station list panel' : 'Show station list panel');
