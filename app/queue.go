@@ -40,6 +40,13 @@ func (rq *RetryQueue) AddRequest(pageNum int, isStations bool) {
 	rq.mu.Lock()
 	defer rq.mu.Unlock()
 
+	for _, existing := range rq.requests {
+		if existing.PageNum == pageNum && existing.IsStations == isStations {
+			log.Printf("[RETRY] Duplicate retry ignored for %s page %d", getRequestType(isStations), pageNum)
+			return
+		}
+	}
+
 	retryReq := RetryRequest{
 		PageNum:      pageNum,
 		IsStations:   isStations,
@@ -185,7 +192,17 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[RETRY-STATIONS] API returned status %d for page %d", resp.StatusCode, pageNum)
-		return false
+		if resp.StatusCode == http.StatusNotFound {
+			log.Printf("[RETRY-STATIONS] Page %d returned 404, dropping retry as terminal", pageNum)
+			return true
+		}
+
+		if isRetriableStatusCode(resp.StatusCode) {
+			return false
+		}
+
+		log.Printf("[RETRY-STATIONS] Non-retriable status %d for page %d, dropping retry", resp.StatusCode, pageNum)
+		return true
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -243,7 +260,17 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[RETRY-PRICES] API returned status %d for page %d", resp.StatusCode, pageNum)
-		return false
+		if resp.StatusCode == http.StatusNotFound {
+			log.Printf("[RETRY-PRICES] Page %d returned 404, dropping retry as terminal", pageNum)
+			return true
+		}
+
+		if isRetriableStatusCode(resp.StatusCode) {
+			return false
+		}
+
+		log.Printf("[RETRY-PRICES] Non-retriable status %d for page %d, dropping retry", resp.StatusCode, pageNum)
+		return true
 	}
 
 	body, err := io.ReadAll(resp.Body)

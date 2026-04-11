@@ -15,6 +15,14 @@ import (
 	"time"
 )
 
+func isRetriableStatusCode(statusCode int) bool {
+	if statusCode == http.StatusTooManyRequests {
+		return true
+	}
+
+	return statusCode >= 500 && statusCode <= 599
+}
+
 type TokenData struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
@@ -174,8 +182,19 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[STATIONS] API returned status %d for page %d", resp.StatusCode, pageNum)
 		resp.Body.Close()
-		globalRetryQueue.AddRequest(pageNum, true)
-		return false
+
+		if resp.StatusCode == http.StatusNotFound {
+			log.Printf("[STATIONS] Page %d returned 404, treating as last page", pageNum)
+			return true
+		}
+
+		if isRetriableStatusCode(resp.StatusCode) {
+			globalRetryQueue.AddRequest(pageNum, true)
+			return false
+		}
+
+		log.Printf("[STATIONS] Non-retriable status %d on page %d, ending cycle to avoid runaway paging", resp.StatusCode, pageNum)
+		return true
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -247,8 +266,19 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[PRICES] API returned status %d for page %d", resp.StatusCode, pageNum)
 		resp.Body.Close()
-		globalRetryQueue.AddRequest(pageNum, false)
-		return false
+
+		if resp.StatusCode == http.StatusNotFound {
+			log.Printf("[PRICES] Page %d returned 404, treating as last page", pageNum)
+			return true
+		}
+
+		if isRetriableStatusCode(resp.StatusCode) {
+			globalRetryQueue.AddRequest(pageNum, false)
+			return false
+		}
+
+		log.Printf("[PRICES] Non-retriable status %d on page %d, ending cycle to avoid runaway paging", resp.StatusCode, pageNum)
+		return true
 	}
 
 	body, err := io.ReadAll(resp.Body)
