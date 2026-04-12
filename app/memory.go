@@ -185,8 +185,14 @@ func loadDataFromSingleCachedPageResponse(pageNum int, requestType RequestType) 
 			log.Printf("[ENRICH] Error processing cached station data for page %d: %v", pageNum, err)
 			return
 		}
-		mergeEntities(stationList, &stations, stationsIndex, &stationsMutex)
-		mergeStationLocations(stationList)
+
+		sanitizedStations, fixedCoordsCount, droppedCoordsCount := sanitizeStationsForUKMapView(stationList)
+		if fixedCoordsCount > 0 || droppedCoordsCount > 0 {
+			log.Printf("[ENRICH] Page %d station coordinate normalization: fixed=%d dropped=%d", pageNum, fixedCoordsCount, droppedCoordsCount)
+		}
+
+		mergeEntities(sanitizedStations, &stations, stationsIndex, &stationsMutex)
+		mergeStationLocations(sanitizedStations)
 	case RequestTypePricesPage:
 		priceStationsList, err := processJSONArray[PriceStation](cache.Data, pageNum, RequestTypePricesPage)
 		if err != nil {
