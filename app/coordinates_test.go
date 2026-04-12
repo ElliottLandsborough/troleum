@@ -36,6 +36,22 @@ func TestNormalizeUKStationCoordinates(t *testing.T) {
 			shouldSucceed: true,
 		},
 		{
+			name:          "powick longitude sign fixed",
+			lat:           52.163258,
+			lng:           2.245994,
+			wantLat:       52.163258,
+			wantLng:       -2.245994,
+			shouldSucceed: true,
+		},
+		{
+			name:          "valid east coast positive longitude remains unchanged",
+			lat:           52.62165,
+			lng:           1.2966,
+			wantLat:       52.62165,
+			wantLng:       1.2966,
+			shouldSucceed: true,
+		},
+		{
 			name:          "unrecoverable coordinate rejected",
 			lat:           42.258815,
 			lng:           -0.288478,
@@ -56,6 +72,37 @@ func TestNormalizeUKStationCoordinates(t *testing.T) {
 
 			if gotLat != tt.wantLat || gotLng != tt.wantLng {
 				t.Fatalf("normalizeUKStationCoordinates() = (%v, %v), want (%v, %v)", gotLat, gotLng, tt.wantLat, tt.wantLng)
+			}
+		})
+	}
+}
+
+func TestIsWithinUKGeofence(t *testing.T) {
+	tests := []struct {
+		name string
+		lat  float64
+		lng  float64
+		want bool
+	}{
+		{
+			name: "norwich in geofence",
+			lat:  52.62165,
+			lng:  1.2966,
+			want: true,
+		},
+		{
+			name: "powick bad sign outside geofence",
+			lat:  52.163258,
+			lng:  2.245994,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isWithinUKGeofence(tt.lat, tt.lng)
+			if got != tt.want {
+				t.Fatalf("isWithinUKGeofence() = %v, want %v", got, tt.want)
 			}
 		})
 	}
