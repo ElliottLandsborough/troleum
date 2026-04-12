@@ -20,6 +20,14 @@ const (
 	MaxParameterValueLength = 100  // Max length for individual parameter values (chars)
 )
 
+// Coordinate bounds (Earth bounds)
+const (
+	MinLatitude  = -90.0
+	MaxLatitude  = 90.0
+	MinLongitude = -180.0
+	MaxLongitude = 180.0
+)
+
 // a map response will have a key of code (int), a key of message (string) and a key of data (interface{})
 type APIResponse struct {
 	Code int `json:"code"`
@@ -52,6 +60,49 @@ func validateQueryParameters(r *http.Request) error {
 	return nil
 }
 
+// isValidLatitude checks if a float64 is a valid latitude value
+func isValidLatitude(lat float64) bool {
+	if math.IsNaN(lat) || math.IsInf(lat, 0) {
+		return false
+	}
+	return lat >= MinLatitude && lat <= MaxLatitude
+}
+
+// isValidLongitude checks if a float64 is a valid longitude value
+func isValidLongitude(lng float64) bool {
+	if math.IsNaN(lng) || math.IsInf(lng, 0) {
+		return false
+	}
+	return lng >= MinLongitude && lng <= MaxLongitude
+}
+
+// validateBboxRange checks that a bounding box has valid ranges
+func validateBboxRange(minLat, minLng, maxLat, maxLng float64) error {
+	// Check for NaN/Infinity
+	if math.IsNaN(minLat) || math.IsInf(minLat, 0) || math.IsNaN(maxLat) || math.IsInf(maxLat, 0) ||
+		math.IsNaN(minLng) || math.IsInf(minLng, 0) || math.IsNaN(maxLng) || math.IsInf(maxLng, 0) {
+		return fmt.Errorf("bbox contains NaN or Infinity values")
+	}
+
+	// Check that min <= max (equal values allowed for single-point bbox)
+	if minLat > maxLat {
+		return fmt.Errorf("bbox minLat (%f) must be less than or equal to maxLat (%f)", minLat, maxLat)
+	}
+	if minLng > maxLng {
+		return fmt.Errorf("bbox minLng (%f) must be less than or equal to maxLng (%f)", minLng, maxLng)
+	}
+
+	// Check that coordinates are within Earth bounds
+	if minLat < MinLatitude || maxLat > MaxLatitude {
+		return fmt.Errorf("bbox latitudes must be between %.1f and %.1f", MinLatitude, MaxLatitude)
+	}
+	if minLng < MinLongitude || maxLng > MaxLongitude {
+		return fmt.Errorf("bbox longitudes must be between %.1f and %.1f", MinLongitude, MaxLongitude)
+	}
+
+	return nil
+}
+
 // http://0.0.0.0:8080/stations?fuel_type=E10&lat=53.483959&lng=-2.244644
 func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate query parameters size
@@ -78,14 +129,14 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	bboxProvided := false
 	var minLat, minLng, maxLat, maxLng float64
 
-	// only allow 0-9, dot and minus in lat/lng
-	latLngPattern := regexp.MustCompile(`^-?[0-9.]+$`)
+	// only allow 0-9, dot and minus in lat/lng (only one decimal point allowed)
+	latLngPattern := regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 	if lat != "" && !latLngPattern.MatchString(lat) {
-		http.Error(w, "Invalid lat parameter", http.StatusBadRequest)
+		http.Error(w, "Invalid lat parameter: must be a valid decimal number", http.StatusBadRequest)
 		return
 	}
 	if lng != "" && !latLngPattern.MatchString(lng) {
-		http.Error(w, "Invalid lng parameter", http.StatusBadRequest)
+		http.Error(w, "Invalid lng parameter: must be a valid decimal number", http.StatusBadRequest)
 		return
 	}
 
@@ -141,6 +192,11 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid bbox parameter. Use format: minLat,minLng,maxLat,maxLng with valid float values", http.StatusBadRequest)
 			return
 		}
+		// Validate bbox ranges and values
+		if err := validateBboxRange(minLat, minLng, maxLat, maxLng); err != nil {
+			http.Error(w, "Invalid bbox: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 		stationsToBeReturned = filterStationsByBoundingBox(stationsToBeReturned, minLat, minLng, maxLat, maxLng)
 		log.Printf("Filtered stations to %d within bounding box", len(stationsToBeReturned))
 	}
@@ -153,6 +209,15 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		lngFloat, err2 := strconv.ParseFloat(lng, 64)
 		if err1 != nil || err2 != nil {
 			http.Error(w, "Invalid lat or lng parameter", http.StatusBadRequest)
+			return
+		}
+		// Validate coordinate ranges and check for NaN/Infinity
+		if !isValidLatitude(latFloat) {
+			http.Error(w, fmt.Sprintf("Invalid lat: must be between %.1f and %.1f", MinLatitude, MaxLatitude), http.StatusBadRequest)
+			return
+		}
+		if !isValidLongitude(lngFloat) {
+			http.Error(w, fmt.Sprintf("Invalid lng: must be between %.1f and %.1f", MinLongitude, MaxLongitude), http.StatusBadRequest)
 			return
 		}
 

@@ -684,3 +684,343 @@ func TestValidateQueryParametersDirectly(t *testing.T) {
 		})
 	}
 }
+
+// TestCoordinateRangeValidation tests latitude and longitude range validation
+func TestCoordinateRangeValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		latQueryParam    string
+		lngQueryParam    string
+		shouldRejectLat  bool
+		shouldRejectLng  bool
+		description      string
+		expectedHTTPCode int
+	}{
+		// Valid ranges
+		{
+			name:             "valid_uk_coords",
+			latQueryParam:    "51.5074",
+			lngQueryParam:    "-0.1278",
+			shouldRejectLat:  false,
+			shouldRejectLng:  false,
+			description:      "Valid London coordinates",
+			expectedHTTPCode: http.StatusOK,
+		},
+		{
+			name:             "lat_at_north_pole",
+			latQueryParam:    "90",
+			lngQueryParam:    "0",
+			shouldRejectLat:  false,
+			shouldRejectLng:  false,
+			description:      "Latitude at north pole (valid limit)",
+			expectedHTTPCode: http.StatusOK,
+		},
+		{
+			name:             "lat_at_south_pole",
+			latQueryParam:    "-90",
+			lngQueryParam:    "0",
+			shouldRejectLat:  false,
+			shouldRejectLng:  false,
+			description:      "Latitude at south pole (valid limit)",
+			expectedHTTPCode: http.StatusOK,
+		},
+		{
+			name:             "lng_at_dateline",
+			latQueryParam:    "0",
+			lngQueryParam:    "180",
+			shouldRejectLat:  false,
+			shouldRejectLng:  false,
+			description:      "Longitude at dateline (valid limit)",
+			expectedHTTPCode: http.StatusOK,
+		},
+		{
+			name:             "lng_at_negative_dateline",
+			latQueryParam:    "0",
+			lngQueryParam:    "-180",
+			shouldRejectLat:  false,
+			shouldRejectLng:  false,
+			description:      "Longitude at negative dateline (valid limit)",
+			expectedHTTPCode: http.StatusOK,
+		},
+
+		// Out of range
+		{
+			name:             "lat_over_90",
+			latQueryParam:    "91",
+			lngQueryParam:    "0",
+			shouldRejectLat:  true,
+			shouldRejectLng:  false,
+			description:      "Latitude > 90 (beyond north pole)",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lat_under_minus_90",
+			latQueryParam:    "-91",
+			lngQueryParam:    "0",
+			shouldRejectLat:  true,
+			shouldRejectLng:  false,
+			description:      "Latitude < -90 (beyond south pole)",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lng_over_180",
+			latQueryParam:    "0",
+			lngQueryParam:    "181",
+			shouldRejectLat:  false,
+			shouldRejectLng:  true,
+			description:      "Longitude > 180 (beyond dateline)",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lng_under_minus_180",
+			latQueryParam:    "0",
+			lngQueryParam:    "-181",
+			shouldRejectLat:  false,
+			shouldRejectLng:  true,
+			description:      "Longitude < -180 (beyond dateline)",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lat_way_out_of_range",
+			latQueryParam:    "999999",
+			lngQueryParam:    "0",
+			shouldRejectLat:  true,
+			shouldRejectLng:  false,
+			description:      "Latitude way out of range (999999)",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lng_way_out_of_range",
+			latQueryParam:    "0",
+			lngQueryParam:    "999999",
+			shouldRejectLat:  false,
+			shouldRejectLng:  true,
+			description:      "Longitude way out of range (999999)",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query := "lat=" + tt.latQueryParam + "&lng=" + tt.lngQueryParam
+			req := httptest.NewRequest("GET", "/api/stations?"+query, nil)
+			w := httptest.NewRecorder()
+
+			stationsAPIHandler(w, req)
+
+			if w.Code != tt.expectedHTTPCode {
+				t.Errorf("%s: expected status %d, got %d", tt.description, tt.expectedHTTPCode, w.Code)
+			}
+		})
+	}
+}
+
+// TestBboxRangeValidation tests bounding box range validation
+func TestBboxRangeValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		bboxQueryParam   string
+		shouldError      bool
+		expectedHTTPCode int
+		description      string
+	}{
+		// Valid bboxes
+		{
+			name:             "valid_bbox",
+			bboxQueryParam:   "51.0,-0.5,52.0,0.5",
+			shouldError:      false,
+			expectedHTTPCode: http.StatusOK,
+			description:      "Valid bounding box",
+		},
+		{
+			name:             "world_bbox",
+			bboxQueryParam:   "-90,-180,90,180",
+			shouldError:      false,
+			expectedHTTPCode: http.StatusOK,
+			description:      "World-spanning bounding box",
+		},
+		{
+			name:             "single_point_bbox",
+			bboxQueryParam:   "51.0,-0.5,51.0,-0.5",
+			shouldError:      false,
+			expectedHTTPCode: http.StatusOK,
+			description:      "Bounding box with same min/max (single point)",
+		},
+
+		// Invalid ranges (min >= max)
+		{
+			name:             "inverted_lat",
+			bboxQueryParam:   "52.0,-0.5,51.0,0.5",
+			shouldError:      true,
+			expectedHTTPCode: http.StatusBadRequest,
+			description:      "Bounding box with inverted latitude (minLat > maxLat)",
+		},
+		{
+			name:             "inverted_lng",
+			bboxQueryParam:   "51.0,0.5,52.0,-0.5",
+			shouldError:      true,
+			expectedHTTPCode: http.StatusBadRequest,
+			description:      "Bounding box with inverted longitude (minLng > maxLng)",
+		},
+
+		// Out of Earth bounds
+		{
+			name:             "lat_beyond_north",
+			bboxQueryParam:   "50,-0.5,91,0.5",
+			shouldError:      true,
+			expectedHTTPCode: http.StatusBadRequest,
+			description:      "Bounding box with maxLat > 90",
+		},
+		{
+			name:             "lat_beyond_south",
+			bboxQueryParam:   "-91,-0.5,50,0.5",
+			shouldError:      true,
+			expectedHTTPCode: http.StatusBadRequest,
+			description:      "Bounding box with minLat < -90",
+		},
+		{
+			name:             "lng_beyond_east",
+			bboxQueryParam:   "50,-0.5,51,181",
+			shouldError:      true,
+			expectedHTTPCode: http.StatusBadRequest,
+			description:      "Bounding box with maxLng > 180",
+		},
+		{
+			name:             "lng_beyond_west",
+			bboxQueryParam:   "50,-181,51,0.5",
+			shouldError:      true,
+			expectedHTTPCode: http.StatusBadRequest,
+			description:      "Bounding box with minLng < -180",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query := "bbox=" + tt.bboxQueryParam
+			req := httptest.NewRequest("GET", "/api/stations?"+query, nil)
+			w := httptest.NewRecorder()
+
+			stationsAPIHandler(w, req)
+
+			if w.Code != tt.expectedHTTPCode {
+				t.Errorf("%s: expected status %d, got %d", tt.description, tt.expectedHTTPCode, w.Code)
+			}
+
+			if tt.shouldError && w.Code < 400 {
+				t.Errorf("%s: expected error but got success", tt.description)
+			}
+		})
+	}
+}
+
+// TestMultipleDecimalPointsRejected tests that coordinates with multiple decimal points are rejected
+func TestMultipleDecimalPointsRejected(t *testing.T) {
+	tests := []struct {
+		name             string
+		latQueryParam    string
+		lngQueryParam    string
+		description      string
+		expectedHTTPCode int
+	}{
+		{
+			name:             "lat_double_decimal",
+			latQueryParam:    "51.5.074",
+			lngQueryParam:    "-0.1278",
+			description:      "Latitude with double decimal point",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lng_double_decimal",
+			latQueryParam:    "51.5074",
+			lngQueryParam:    "-0.12.78",
+			description:      "Longitude with double decimal point",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "both_double_decimal",
+			latQueryParam:    "51.5.074",
+			lngQueryParam:    "-0.12.78",
+			description:      "Both with double decimal points",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+		{
+			name:             "lat_triple_decimal",
+			latQueryParam:    "51.5.0.74",
+			lngQueryParam:    "-0.1278",
+			description:      "Latitude with triple decimal point",
+			expectedHTTPCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query := "lat=" + tt.latQueryParam + "&lng=" + tt.lngQueryParam
+			req := httptest.NewRequest("GET", "/api/stations?"+query, nil)
+			w := httptest.NewRecorder()
+
+			stationsAPIHandler(w, req)
+
+			if w.Code != tt.expectedHTTPCode {
+				t.Errorf("%s: expected status %d, got %d", tt.description, tt.expectedHTTPCode, w.Code)
+			}
+		})
+	}
+}
+
+// TestIsValidLatitude tests the isValidLatitude helper function
+func TestIsValidLatitude(t *testing.T) {
+	tests := []struct {
+		lat         float64
+		isValid     bool
+		description string
+	}{
+		{lat: 0, isValid: true, description: "Zero latitude (equator)"},
+		{lat: 51.5, isValid: true, description: "Normal latitude"},
+		{lat: 90, isValid: true, description: "North pole"},
+		{lat: -90, isValid: true, description: "South pole"},
+		{lat: -45.5, isValid: true, description: "Southern hemisphere"},
+		{lat: 90.0001, isValid: false, description: "Just beyond north pole"},
+		{lat: -90.0001, isValid: false, description: "Just beyond south pole"},
+		{lat: 180, isValid: false, description: "Longitude value (should be invalid for latitude)"},
+		{lat: 999999, isValid: false, description: "Way beyond north pole"},
+		{lat: -999999, isValid: false, description: "Way beyond south pole"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			result := isValidLatitude(tt.lat)
+			if result != tt.isValid {
+				t.Errorf("%s: expected %v, got %v", tt.description, tt.isValid, result)
+			}
+		})
+	}
+}
+
+// TestIsValidLongitude tests the isValidLongitude helper function
+func TestIsValidLongitude(t *testing.T) {
+	tests := []struct {
+		lng         float64
+		isValid     bool
+		description string
+	}{
+		{lng: 0, isValid: true, description: "Zero longitude (prime meridian)"},
+		{lng: -0.1278, isValid: true, description: "Normal longitude"},
+		{lng: 180, isValid: true, description: "Dateline (east)"},
+		{lng: -180, isValid: true, description: "Dateline (west)"},
+		{lng: 45.5, isValid: true, description: "Eastern hemisphere"},
+		{lng: -120.5, isValid: true, description: "Western hemisphere"},
+		{lng: 180.0001, isValid: false, description: "Just beyond dateline"},
+		{lng: -180.0001, isValid: false, description: "Just beyond dateline (negative)"},
+		{lng: 270, isValid: false, description: "Way beyond dateline"},
+		{lng: -270, isValid: false, description: "Way beyond dateline (negative)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			result := isValidLongitude(tt.lng)
+			if result != tt.isValid {
+				t.Errorf("%s: expected %v, got %v", tt.description, tt.isValid, result)
+			}
+		})
+	}
+}
