@@ -13,6 +13,7 @@ RUN go mod download
 
 # Copy the rest of the source code
 COPY app/config.go /app/
+COPY app/coordinates.go /app/
 COPY app/debug.go /app/
 COPY app/govApi.go /app/
 COPY app/json.go /app/

@@ -63,6 +63,14 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	copy(stationsToBeReturned, stations)
 	stationsMutex.Unlock()
 
+	stationsToBeReturned, fixedCoordsCount, droppedCoordsCount := sanitizeStationsForUKMapView(stationsToBeReturned)
+	if fixedCoordsCount > 0 {
+		log.Printf("Normalized %d station coordinate pair(s) for UK map bounds", fixedCoordsCount)
+	}
+	if droppedCoordsCount > 0 {
+		log.Printf("Dropped %d station(s) with irrecoverable coordinates", droppedCoordsCount)
+	}
+
 	log.Printf("Received request for stations with fuel type '%s' and location (%s, %s)", fuelType, lat, lng)
 
 	fuelTypes := getCachedFuelTypes()
