@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const testStationPageJSON = `[
@@ -115,6 +118,22 @@ func resetGlobalMemoryStateForTest() {
 	enrichmentTimerMutex.Unlock()
 }
 
+func withTempWorkingDir(t *testing.T) string {
+	t.Helper()
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tempDir := t.TempDir()
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+	return tempDir
+}
+
 func TestRemoveMissingStationsUsesStationCache(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)
@@ -136,6 +155,44 @@ func TestRemoveMissingStationsUsesStationCache(t *testing.T) {
 	}
 	if _, exists := stationsIndex["station-1"]; exists {
 		t.Fatalf("expected station-1 to be removed from stationsIndex")
+	}
+}
+
+func TestLoadDataFromAllCachedPageResponses(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	stationsMutex.Lock()
+	stations = []Station{{NodeID: "stale"}}
+	stationsIndex = map[string]int{"stale": 0}
+	stationsMutex.Unlock()
+
+	savedStationsPagesMutex.Lock()
+	savedStationsPages[1] = ResponseCache{CreatedAt: time.Now(), Data: json.RawMessage(testStationPageJSON)}
+	savedStationsPagesMutex.Unlock()
+
+	savedPricesPagesMutex.Lock()
+	savedPricesPages[1] = ResponseCache{CreatedAt: time.Now(), Data: json.RawMessage(testPricePageJSON)}
+	savedPricesPagesMutex.Unlock()
+
+	loadDataFromAllCachedPageResponses()
+
+	stationsMutex.Lock()
+	_, staleExists := stationsIndex["stale"]
+	stationCount := len(stations)
+	stationsMutex.Unlock()
+	if staleExists {
+		t.Fatal("expected stale station to be removed during full cached load")
+	}
+	if stationCount != 2 {
+		t.Fatalf("expected 2 stations after reload, got %d", stationCount)
+	}
+
+	priceStationsMutex.Lock()
+	priceCount := len(priceStations)
+	priceStationsMutex.Unlock()
+	if priceCount != 2 {
+		t.Fatalf("expected 2 price stations after reload, got %d", priceCount)
 	}
 }
 
@@ -171,7 +228,6 @@ func TestConcurrentCacheUpdatesAndHandlers(t *testing.T) {
 				stationRequest := httptest.NewRequest(http.MethodGet, "/api/stations?fuel_type=E10&lat=53.483959&lng=-2.244644", nil)
 				stationRecorder := httptest.NewRecorder()
 				stationsAPIHandler(stationRecorder, stationRequest)
-
 				if stationRecorder.Code != http.StatusOK {
 					t.Errorf("stations handler returned status %d", stationRecorder.Code)
 					return
@@ -180,7 +236,6 @@ func TestConcurrentCacheUpdatesAndHandlers(t *testing.T) {
 				fuelTypesRequest := httptest.NewRequest(http.MethodGet, "/api/fuel-types", nil)
 				fuelTypesRecorder := httptest.NewRecorder()
 				fuelTypesAPIHandler(fuelTypesRecorder, fuelTypesRequest)
-
 				if fuelTypesRecorder.Code != http.StatusOK {
 					t.Errorf("fuel types handler returned status %d", fuelTypesRecorder.Code)
 					return
