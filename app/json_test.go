@@ -117,11 +117,18 @@ func TestLoadDataFromJSONFiles(t *testing.T) {
 
 	loadDataFromJSONFiles()
 
-	stationsMutex.Lock()
-	stationCount := len(stations)
-	stationsMutex.Unlock()
-	if stationCount != 2 {
-		t.Fatalf("expected 2 stations loaded, got %d", stationCount)
+	savedStationsPagesMutex.Lock()
+	savedStationsPageCount := len(savedStationsPages)
+	savedStationsPagesMutex.Unlock()
+	if savedStationsPageCount != 1 {
+		t.Fatalf("expected 1 cached stations page loaded, got %d", savedStationsPageCount)
+	}
+
+	savedPricesPagesMutex.Lock()
+	savedPricesPageCount := len(savedPricesPages)
+	savedPricesPagesMutex.Unlock()
+	if savedPricesPageCount != 1 {
+		t.Fatalf("expected 1 cached prices page loaded, got %d", savedPricesPageCount)
 	}
 
 	priceStationsMutex.Lock()

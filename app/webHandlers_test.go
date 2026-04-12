@@ -507,10 +507,11 @@ func TestGetStationPricesReturnsCopy(t *testing.T) {
 	}
 	prices[0].Price = 999.0
 	priceStationsMutex.Lock()
-	defer priceStationsMutex.Unlock()
 	if priceStations[0].FuelPrices[0].Price != 150.0 {
+		priceStationsMutex.Unlock()
 		t.Fatal("expected returned prices to be a copy, but shared slice was modified")
 	}
+	priceStationsMutex.Unlock()
 	if getStationPrices(Station{NodeID: "missing"}) != nil {
 		t.Fatal("expected nil prices for missing station")
 	}
