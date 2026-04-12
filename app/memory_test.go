@@ -118,6 +118,13 @@ func resetGlobalMemoryStateForTest() {
 	enrichmentTimerMutex.Unlock()
 }
 
+func TestPriceStationGetNodeID(t *testing.T) {
+	station := PriceStation{NodeID: "station-xyz"}
+	if got := station.GetNodeID(); got != "station-xyz" {
+		t.Fatalf("GetNodeID() = %q, want %q", got, "station-xyz")
+	}
+}
+
 func withTempWorkingDir(t *testing.T) string {
 	t.Helper()
 	originalWD, err := os.Getwd()

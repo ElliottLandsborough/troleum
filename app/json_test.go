@@ -2,12 +2,31 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type failingResponseWriter struct {
+	headers http.Header
+}
+
+func (f *failingResponseWriter) Header() http.Header {
+	if f.headers == nil {
+		f.headers = make(http.Header)
+	}
+	return f.headers
+}
+
+func (f *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func (f *failingResponseWriter) WriteHeader(int) {}
 
 func TestWriteJSONPretty(t *testing.T) {
 	w := httptest.NewRecorder()
@@ -24,6 +43,11 @@ func TestWriteJSONPretty(t *testing.T) {
 	w = httptest.NewRecorder()
 	if err := writeJSONPretty(w, map[string]any{"bad": make(chan int)}); err == nil {
 		t.Fatal("expected marshal error for unsupported type")
+	}
+
+	fw := &failingResponseWriter{}
+	if err := writeJSONPretty(fw, map[string]any{"ok": true}); err == nil {
+		t.Fatal("expected write error to be returned")
 	}
 }
 
