@@ -6,3 +6,9 @@ troleum_image.tar
 .vscode
 diagnostics/
 troleum
+coverage.out
+*.coverprofile
+*.test
+*.prof
+.venv/
+.DS_Store

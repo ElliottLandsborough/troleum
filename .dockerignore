@@ -9,3 +9,9 @@ GUIDELINES.md
 troleum_image.tar
 diagnostics/
 troleum
+coverage.out
+.git/
+.github/
+.vscode/
+.venv/
+.DS_Store

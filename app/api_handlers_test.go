@@ -50,22 +50,22 @@ func TestStationsAPIHandlerEdgeCases(t *testing.T) {
 		{
 			name:           "lat_way_too_high",
 			queryParams:    "lat=999999.9999&lng=-0.1278",
-			expectedStatus: http.StatusOK, // regex allows it, but coordinates will be invalid
-			shouldError:    false,
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
 			description:    "Latitude far beyond Earth bounds (999999)",
 		},
 		{
 			name:           "lat_negative_way_too_high",
 			queryParams:    "lat=-50000.5&lng=-0.1278",
-			expectedStatus: http.StatusOK,
-			shouldError:    false,
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
 			description:    "Negative latitude beyond bounds",
 		},
 		{
 			name:           "lng_way_too_high",
 			queryParams:    "lat=51.5074&lng=999999.5",
-			expectedStatus: http.StatusOK,
-			shouldError:    false,
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
 			description:    "Longitude far beyond Earth bounds",
 		},
 		{
@@ -238,22 +238,22 @@ func TestStationsAPIHandlerEdgeCases(t *testing.T) {
 		{
 			name:           "bbox_infinity",
 			queryParams:    "bbox=Infinity,-0.5,52.0,0.5",
-			expectedStatus: http.StatusOK, // Infinity parses as valid float64, just doesn't filter usefully
-			shouldError:    false,
-			description:    "Bbox with Infinity value (parses but doesn't filter)",
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
+			description:    "Bbox with Infinity value",
 		},
 		{
 			name:           "bbox_inverted_lat",
 			queryParams:    "bbox=52.0,-0.5,51.0,0.5",
-			expectedStatus: http.StatusOK, // No validation of min/max order
-			shouldError:    false,
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
 			description:    "Bbox with inverted latitude (minLat > maxLat)",
 		},
 		{
 			name:           "bbox_inverted_lng",
 			queryParams:    "bbox=51.0,0.5,52.0,-0.5",
-			expectedStatus: http.StatusOK,
-			shouldError:    false,
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
 			description:    "Bbox with inverted longitude (minLng > maxLng)",
 		},
 		{
@@ -266,8 +266,8 @@ func TestStationsAPIHandlerEdgeCases(t *testing.T) {
 		{
 			name:           "bbox_beyond_world",
 			queryParams:    "bbox=-999,-999,999,999",
-			expectedStatus: http.StatusOK,
-			shouldError:    false,
+			expectedStatus: http.StatusBadRequest,
+			shouldError:    true,
 			description:    "Bbox with values beyond Earth bounds",
 		},
 
@@ -402,8 +402,8 @@ func TestCoordinateParsingEdgeCases(t *testing.T) {
 		{"0", "0", false, "Zero coordinates"},
 		{"-90", "180", false, "Extreme valid Earth coordinates"},
 		{"90.0", "-180.0", false, "Poles and dateline"},
-		{".5", "-.5", false, "Leading decimal point"},
-		{"5.", "-5.", false, "Trailing decimal point"},
+		{".5", "-.5", true, "Leading decimal point"},
+		{"5.", "-5.", true, "Trailing decimal point"},
 		{"1e10", "2e10", true, "Scientific notation (should fail regex)"},
 		{"+51.5", "-0.1", true, "Plus sign (should fail regex)"},
 		{"51,5", "-0,1", true, "Comma as decimal separator"},
@@ -478,16 +478,16 @@ func TestBboxParameterValidation(t *testing.T) {
 		{"51.0,-0.5,52.0,0.5", false, "Valid bbox"},
 		{"0,0,1,1", false, "Small bbox"},
 		{"-90,-180,90,180", false, "World bbox"},
-		{"90,180,91,181", false, "Out of bounds but parseable"},
-		{"-999,-999,999,999", false, "Extreme out of bounds"},
+		{"90,180,91,181", true, "Out of bounds"},
+		{"-999,-999,999,999", true, "Extreme out of bounds"},
 		{"51.0,-0.5,52.0", true, "Missing one coordinate"},
 		{"51.0,-0.5,52.0,0.5,extra", true, "Extra coordinate"},
 		{"51.0,-0.5,52.0,abc", true, "Non-numeric value"},
 		{"abc,def,ghi,jkl", true, "All non-numeric"},
 		{"", false, "Empty bbox (treated as not provided)"},
 		{"51.0,-0.5,,0.5", true, "Missing middle value"},
-		{"51.0,-0.5,NaN,0.5", false, "NaN in bbox (parses as valid float64)"},
-		{"51.0,-0.5,Infinity,0.5", false, "Infinity in bbox (parses as valid float64)"},
+		{"51.0,-0.5,NaN,0.5", true, "NaN in bbox"},
+		{"51.0,-0.5,Infinity,0.5", true, "Infinity in bbox"},
 		{"51.0;-0.5;52.0;0.5", false, "Semicolon separator (treated as single malformed string, returns 200 since bbox param missing)"},
 	}
 
@@ -594,7 +594,7 @@ func TestQueryParameterLengthLimits(t *testing.T) {
 		// Multiple parameters within limit
 		{
 			name:           "multiple_params_within_limits",
-			queryParams:    "lat=" + strings.Repeat("5", 50) + "&lng=" + strings.Repeat("5", 50) + "&fuel_type=E10",
+			queryParams:    "lat=51.5074&lng=-0.1278&fuel_type=E10&client_id=" + strings.Repeat("A", 50),
 			expectedStatus: http.StatusOK,
 			shouldError:    false,
 			description:    "Multiple parameters all within individual limit",
