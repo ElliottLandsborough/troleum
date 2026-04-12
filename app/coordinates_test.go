@@ -2,6 +2,22 @@ package main
 
 import "testing"
 
+func setUKGeofenceStateForTest(polygons [][]geoPoint, loaded bool) func() {
+	ukPolygonMutex.Lock()
+	prevPolygons := ukGeofencePolygons
+	prevLoaded := ukPolygonLoaded
+	ukGeofencePolygons = polygons
+	ukPolygonLoaded = loaded
+	ukPolygonMutex.Unlock()
+
+	return func() {
+		ukPolygonMutex.Lock()
+		ukGeofencePolygons = prevPolygons
+		ukPolygonLoaded = prevLoaded
+		ukPolygonMutex.Unlock()
+	}
+}
+
 func TestNormalizeUKStationCoordinates(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -218,4 +234,48 @@ func TestSanitizeStationsForUKMapView(t *testing.T) {
 	if float64(sanitized[1].Location.Latitude) != 55.9174088 || float64(sanitized[1].Location.Longitude) != -4.3215535 {
 		t.Fatalf("sanitizeStationsForUKMapView() swap fix failed, got (%v, %v)", sanitized[1].Location.Latitude, sanitized[1].Location.Longitude)
 	}
+}
+
+func TestHasUKGeofenceData(t *testing.T) {
+	t.Run("returns false when loaded but empty", func(t *testing.T) {
+		restore := setUKGeofenceStateForTest(nil, true)
+		t.Cleanup(restore)
+
+		if hasUKGeofenceData() {
+			t.Fatal("expected no geofence data")
+		}
+	})
+
+	t.Run("returns true when loaded with polygons", func(t *testing.T) {
+		restore := setUKGeofenceStateForTest([][]geoPoint{{{lat: 51.5, lng: -0.1}}}, true)
+		t.Cleanup(restore)
+
+		if !hasUKGeofenceData() {
+			t.Fatal("expected geofence data to be present")
+		}
+	})
+
+	t.Run("lazy loads when not loaded and still returns false without boundary file", func(t *testing.T) {
+		ukPolygonMutex.Lock()
+		prevPolygons := ukGeofencePolygons
+		prevLoaded := ukPolygonLoaded
+		prevPaths := ukBoundaryFilePaths
+
+		ukGeofencePolygons = nil
+		ukPolygonLoaded = false
+		ukBoundaryFilePaths = []string{"/definitely/missing/file.json"}
+		ukPolygonMutex.Unlock()
+
+		t.Cleanup(func() {
+			ukPolygonMutex.Lock()
+			ukGeofencePolygons = prevPolygons
+			ukPolygonLoaded = prevLoaded
+			ukBoundaryFilePaths = prevPaths
+			ukPolygonMutex.Unlock()
+		})
+
+		if hasUKGeofenceData() {
+			t.Fatal("expected no geofence data when boundary file cannot be loaded")
+		}
+	})
 }

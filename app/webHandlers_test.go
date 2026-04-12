@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -405,6 +406,21 @@ func TestIsValidLongitude(t *testing.T) {
 				t.Errorf("%s: expected %v, got %v", tt.description, tt.isValid, result)
 			}
 		})
+	}
+}
+
+func TestIsValidLatLngRejectsNaNAndInfinity(t *testing.T) {
+	if isValidLatitude(math.NaN()) {
+		t.Fatal("expected NaN latitude to be invalid")
+	}
+	if isValidLatitude(math.Inf(1)) {
+		t.Fatal("expected +Inf latitude to be invalid")
+	}
+	if isValidLongitude(math.NaN()) {
+		t.Fatal("expected NaN longitude to be invalid")
+	}
+	if isValidLongitude(math.Inf(-1)) {
+		t.Fatal("expected -Inf longitude to be invalid")
 	}
 }
 
