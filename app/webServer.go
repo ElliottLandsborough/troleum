@@ -109,8 +109,12 @@ func setupWebServer() *http.Server {
 	})))
 
 	return &http.Server{
-		Addr:    "0.0.0.0:8080",
-		Handler: mux,
+		Addr:           "0.0.0.0:8080",
+		Handler:        mux,
+		MaxHeaderBytes: 1 << 20,          // 1MB max for request headers (URL + all headers combined)
+		ReadTimeout:    15 * time.Second, // Prevent slowloris attacks
+		WriteTimeout:   15 * time.Second, // Prevent slow client writes
+		IdleTimeout:    60 * time.Second, // Close idle connections
 	}
 }
 

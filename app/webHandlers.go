@@ -14,6 +14,12 @@ import (
 
 var fuelTypePattern = regexp.MustCompile(`^[A-Z0-9_]{1,16}$`)
 
+// Parameter size limits to prevent abuse
+const (
+	MaxQueryStringLength    = 1000 // Max total query string length (chars)
+	MaxParameterValueLength = 100  // Max length for individual parameter values (chars)
+)
+
 // a map response will have a key of code (int), a key of message (string) and a key of data (interface{})
 type APIResponse struct {
 	Code int `json:"code"`
@@ -26,8 +32,35 @@ type FuelTypesResponse struct {
 	Data []string `json:"data,omitempty"`
 }
 
+// validateQueryParameters checks that query parameters don't exceed reasonable size limits
+func validateQueryParameters(r *http.Request) error {
+	// Check total query string length
+	rawQuery := r.URL.RawQuery
+	if len(rawQuery) > MaxQueryStringLength {
+		return fmt.Errorf("query string too long: %d chars (max %d)", len(rawQuery), MaxQueryStringLength)
+	}
+
+	// Check individual parameter values
+	for key, values := range r.URL.Query() {
+		for _, value := range values {
+			if len(value) > MaxParameterValueLength {
+				return fmt.Errorf("parameter %q value too long: %d chars (max %d)", key, len(value), MaxParameterValueLength)
+			}
+		}
+	}
+
+	return nil
+}
+
 // http://0.0.0.0:8080/stations?fuel_type=E10&lat=53.483959&lng=-2.244644
 func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate query parameters size
+	if err := validateQueryParameters(r); err != nil {
+		log.Printf("Query validation error: %v", err)
+		http.Error(w, "Bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	fuelType := r.URL.Query().Get("fuel_type")
 	if fuelType != "" && !fuelTypePattern.MatchString(fuelType) {
 		http.Error(w, "Invalid fuel_type. Use 1-16 chars: A-Z, 0-9, and underscore only.", http.StatusBadRequest)
