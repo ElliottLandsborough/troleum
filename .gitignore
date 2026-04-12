@@ -3,3 +3,6 @@ json/*
 .env
 main
 troleum_image.tar
+.vscode
+diagnostics/
+troleum

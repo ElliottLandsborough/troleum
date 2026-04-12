@@ -13,6 +13,7 @@ RUN go mod download
 
 # Copy the rest of the source code
 COPY app/config.go /app/
+COPY app/coordinates.go /app/
 COPY app/debug.go /app/
 COPY app/govApi.go /app/
 COPY app/json.go /app/
@@ -57,6 +58,9 @@ RUN mkdir -p json
 
 # Copy binary and set permissions (read/execute only)
 COPY --from=builder --chown=appuser:appuser --chmod=555 /app/main .
+
+# Copy OSM-derived UK boundary data used for coordinate correction
+COPY --chown=appuser:appuser --chmod=444 app/uk_land_osm.json ./uk_land_osm.json
 
 # Copy static/web files (read-only)
 COPY --chown=appuser:appuser --chmod=555 static ./static
