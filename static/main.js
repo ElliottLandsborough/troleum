@@ -1192,7 +1192,7 @@ function renderStationInfo(pins) {
     const isDistanceSelected = selectedFuelType == null;
 
     if (sortedPinList.length === 0) {
-        infoDiv.innerHTML = '<p>No stations found in this area.</p>';
+        infoDiv.innerHTML = '<div class="location-list-item">No stations found in this area.</div>';
         return;
     }
 
