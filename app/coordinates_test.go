@@ -4,11 +4,11 @@ import "testing"
 
 func TestNormalizeUKStationCoordinates(t *testing.T) {
 	tests := []struct {
-		name        string
-		lat         float64
-		lng         float64
-		wantLat     float64
-		wantLng     float64
+		name          string
+		lat           float64
+		lng           float64
+		wantLat       float64
+		wantLng       float64
 		shouldSucceed bool
 	}{
 		{
@@ -49,6 +49,46 @@ func TestNormalizeUKStationCoordinates(t *testing.T) {
 			lng:           1.2966,
 			wantLat:       52.62165,
 			wantLng:       1.2966,
+			shouldSucceed: true,
+		},
+		{
+			name:          "whitby sign corrected",
+			lat:           54.487166,
+			lng:           0.624071,
+			wantLat:       54.487166,
+			wantLng:       -0.624071,
+			shouldSucceed: true,
+		},
+		{
+			name:          "mansfield sign corrected",
+			lat:           53.1421,
+			lng:           1.2067,
+			wantLat:       53.1421,
+			wantLng:       -1.2067,
+			shouldSucceed: true,
+		},
+		{
+			name:          "bawdrip belgium-side sign corrected",
+			lat:           51.1558,
+			lng:           2.9341,
+			wantLat:       51.1558,
+			wantLng:       -2.9341,
+			shouldSucceed: true,
+		},
+		{
+			name:          "bawdrip swapped and sign corrected",
+			lat:           2.9341,
+			lng:           51.1558,
+			wantLat:       51.1558,
+			wantLng:       -2.9341,
+			shouldSucceed: true,
+		},
+		{
+			name:          "holton heath sign corrected",
+			lat:           50.7234,
+			lng:           2.079,
+			wantLat:       50.7234,
+			wantLng:       -2.079,
 			shouldSucceed: true,
 		},
 		{
@@ -95,6 +135,30 @@ func TestIsWithinUKGeofence(t *testing.T) {
 			lat:  52.163258,
 			lng:  2.245994,
 			want: false,
+		},
+		{
+			name: "whitby positive longitude outside geofence",
+			lat:  54.487166,
+			lng:  0.624071,
+			want: false,
+		},
+		{
+			name: "whitby corrected longitude inside geofence",
+			lat:  54.487166,
+			lng:  -0.624071,
+			want: true,
+		},
+		{
+			name: "mansfield erroneous positive longitude outside geofence",
+			lat:  53.1421,
+			lng:  1.2067,
+			want: false,
+		},
+		{
+			name: "mansfield corrected negative longitude inside geofence",
+			lat:  53.1421,
+			lng:  -1.2067,
+			want: true,
 		},
 	}
 

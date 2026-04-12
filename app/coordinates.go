@@ -1,10 +1,17 @@
 package main
 
+import (
+	"encoding/json"
+	"log"
+	"os"
+	"sync"
+)
+
 const (
 	ukMinLatitude  = 49.5
 	ukMaxLatitude  = 61.5
 	ukMinLongitude = -11.0
-	ukMaxLongitude = 3.0
+	ukMaxLongitude = 1.9
 )
 
 type geoPoint struct {
@@ -12,48 +19,69 @@ type geoPoint struct {
 	lng float64
 }
 
-var ukGeofencePolygons = [][]geoPoint{
-	// Simplified Great Britain coastline polygon.
-	{
-		{lat: 49.90, lng: -6.50},
-		{lat: 50.00, lng: -5.20},
-		{lat: 50.40, lng: -4.20},
-		{lat: 50.60, lng: -3.50},
-		{lat: 50.70, lng: -2.50},
-		{lat: 50.80, lng: -1.50},
-		{lat: 50.70, lng: -0.50},
-		{lat: 50.70, lng: 0.30},
-		{lat: 51.00, lng: 1.30},
-		{lat: 52.00, lng: 1.80},
-		{lat: 53.20, lng: 1.60},
-		{lat: 54.50, lng: 0.80},
-		{lat: 55.20, lng: -1.50},
-		{lat: 55.80, lng: -2.10},
-		{lat: 56.50, lng: -3.10},
-		{lat: 57.30, lng: -3.30},
-		{lat: 58.20, lng: -3.00},
-		{lat: 58.80, lng: -2.70},
-		{lat: 59.00, lng: -4.80},
-		{lat: 58.50, lng: -6.20},
-		{lat: 57.80, lng: -7.20},
-		{lat: 56.80, lng: -7.60},
-		{lat: 55.80, lng: -6.50},
-		{lat: 55.00, lng: -5.60},
-		{lat: 54.20, lng: -5.30},
-		{lat: 53.40, lng: -4.70},
-		{lat: 52.80, lng: -4.40},
-		{lat: 52.10, lng: -5.20},
-		{lat: 51.50, lng: -5.50},
-		{lat: 50.90, lng: -5.90},
-		{lat: 50.20, lng: -6.20},
-	},
-	// Simplified Northern Ireland polygon.
-	{
-		{lat: 54.35, lng: -8.20},
-		{lat: 55.35, lng: -8.20},
-		{lat: 55.35, lng: -5.30},
-		{lat: 54.35, lng: -5.30},
-	},
+// ukGeofencePolygons holds OSM-derived UK polygons used only for coordinate correction.
+var ukGeofencePolygons = [][]geoPoint{}
+var ukPolygonMutex sync.RWMutex
+var ukPolygonLoaded = false
+var ukBoundaryFilePaths = []string{
+	"uk_land_osm.json",
+	"app/uk_land_osm.json",
+}
+
+// loadUKBoundary loads the OSM-derived UK polygons used for coordinate correction.
+func loadUKBoundary() {
+	ukPolygonMutex.Lock()
+	defer ukPolygonMutex.Unlock()
+
+	if ukPolygonLoaded {
+		return
+	}
+
+	var data []byte
+	var err error
+	loadedPath := ""
+	for _, candidatePath := range ukBoundaryFilePaths {
+		data, err = os.ReadFile(candidatePath)
+		if err == nil {
+			loadedPath = candidatePath
+			break
+		}
+	}
+	if loadedPath == "" {
+		log.Printf("WARNING: Could not load OSM UK boundary file from any known path: %v", err)
+		ukPolygonLoaded = true
+		return
+	}
+
+	var polygons [][][]float64
+	if err := json.Unmarshal(data, &polygons); err != nil {
+		log.Printf("WARNING: Could not parse OSM UK boundary JSON: %v", err)
+		ukPolygonLoaded = true
+		return
+	}
+
+	loadedPolygons := make([][]geoPoint, 0, len(polygons))
+	for _, polygon := range polygons {
+		converted := make([]geoPoint, 0, len(polygon))
+		for _, point := range polygon {
+			if len(point) >= 2 {
+				converted = append(converted, geoPoint{lat: point[0], lng: point[1]})
+			}
+		}
+		if len(converted) >= 3 {
+			loadedPolygons = append(loadedPolygons, converted)
+		}
+	}
+
+	if len(loadedPolygons) == 0 {
+		log.Printf("WARNING: OSM UK boundary JSON did not contain any usable polygons")
+		ukPolygonLoaded = true
+		return
+	}
+
+	ukGeofencePolygons = loadedPolygons
+	log.Printf("LOADED OSM UK boundary with %d polygons from %s", len(ukGeofencePolygons), loadedPath)
+	ukPolygonLoaded = true
 }
 
 func isWithinWorldBounds(lat, lng float64) bool {
@@ -89,6 +117,16 @@ func isPointInPolygon(lat, lng float64, polygon []geoPoint) bool {
 }
 
 func isWithinUKGeofence(lat, lng float64) bool {
+	ukPolygonMutex.RLock()
+	if !ukPolygonLoaded {
+		ukPolygonMutex.RUnlock()
+		loadUKBoundary()
+		ukPolygonMutex.RLock()
+		defer ukPolygonMutex.RUnlock()
+	} else {
+		defer ukPolygonMutex.RUnlock()
+	}
+
 	for _, polygon := range ukGeofencePolygons {
 		if isPointInPolygon(lat, lng, polygon) {
 			return true
@@ -102,21 +140,37 @@ func isValidUKCoordinate(lat, lng float64) bool {
 	return isWithinUKBounds(lat, lng) && isWithinUKGeofence(lat, lng)
 }
 
+func hasUKGeofenceData() bool {
+	ukPolygonMutex.RLock()
+	if !ukPolygonLoaded {
+		ukPolygonMutex.RUnlock()
+		loadUKBoundary()
+		ukPolygonMutex.RLock()
+		defer ukPolygonMutex.RUnlock()
+	} else {
+		defer ukPolygonMutex.RUnlock()
+	}
+
+	return len(ukGeofencePolygons) > 0
+}
+
 func normalizeUKStationCoordinates(lat, lng float64) (float64, float64, bool) {
 	if !isWithinWorldBounds(lat, lng) {
 		return 0, 0, false
 	}
 
-	if isValidUKCoordinate(lat, lng) {
-		return lat, lng, true
+	// Try the original and common corruption variants.
+	candidates := []geoPoint{
+		{lat: lat, lng: lng},  // original
+		{lat: lng, lng: lat},  // swapped
+		{lat: lat, lng: -lng}, // longitude sign flipped
+		{lat: lng, lng: -lat}, // swapped + longitude sign flipped in swapped form
 	}
 
-	if isValidUKCoordinate(lng, lat) {
-		return lng, lat, true
-	}
-
-	if isValidUKCoordinate(lat, -lng) {
-		return lat, -lng, true
+	for _, candidate := range candidates {
+		if isValidUKCoordinate(candidate.lat, candidate.lng) {
+			return candidate.lat, candidate.lng, true
+		}
 	}
 
 	return 0, 0, false

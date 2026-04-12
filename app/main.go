@@ -30,6 +30,12 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
+	// Boundary data is required for coordinate normalization; fail fast if unavailable.
+	loadUKBoundary()
+	if !hasUKGeofenceData() {
+		log.Fatal("UK OSM boundary data failed to load; refusing to start")
+	}
+
 	// Initialize enrichment timer BEFORE starting fetchers
 	initEnrichmentTimer(ctx)
 

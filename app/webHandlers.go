@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand/v2"
 	"net/http"
 	"regexp"
 	"sort"
@@ -190,13 +189,7 @@ func selectFirstStations(stations []Station, n int) []Station {
 		return stations
 	}
 
-	selected := make([]Station, n)
-	perm := rand.Perm(len(stations))
-	for i := 0; i < n; i++ {
-		selected[i] = stations[perm[i]]
-	}
-
-	return selected
+	return stations[:n]
 }
 
 func buildLowestStationPriceIndex() map[string]float64 {
