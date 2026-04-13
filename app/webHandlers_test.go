@@ -535,6 +535,65 @@ func TestGetStationPricesReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestFormattedStationsForJSSanitizesFields(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	priceStationsMutex.Lock()
+	priceStations = []PriceStation{{
+		NodeID: "station-1",
+		FuelPrices: []FuelPrice{
+			{FuelType: "E10", Price: 150.5},
+			{FuelType: "bad<script>", Price: 151.0},
+			{FuelType: "B7_STANDARD", Price: math.Inf(1)},
+		},
+	}}
+	priceStationsIndex = map[string]int{"station-1": 0}
+	priceStationsMutex.Unlock()
+
+	formatted := formattedStationsForJS([]Station{{
+		NodeID:            "station-1",
+		BrandName:         " BP\x00 ",
+		TradingName:       " <High   Street> ",
+		PublicPhoneNumber: "+44 (0)20 1234 5678",
+		Location: Location{
+			AddressLine1: "  1\nMain Street ",
+			City:         " London\t",
+			Postcode:     " SW1A 1AA ",
+			Latitude:     FlexFloat(51.5),
+			Longitude:    FlexFloat(-0.1),
+		},
+		Distance: math.Inf(1),
+	}})
+
+	if len(formatted) != 1 {
+		t.Fatalf("expected 1 station, got %d", len(formatted))
+	}
+
+	station := formatted[0]
+	if station.Name != "BP - <High Street>" {
+		t.Fatalf("expected sanitized station name, got %q", station.Name)
+	}
+	if station.Address != "1 Main Street, London, SW1A 1AA" {
+		t.Fatalf("expected sanitized address, got %q", station.Address)
+	}
+	if station.Phone != "+44 (0)20 1234 5678" {
+		t.Fatalf("expected sanitized phone display, got %q", station.Phone)
+	}
+	if station.PhoneURI != "tel:+4402012345678" {
+		t.Fatalf("expected sanitized phone URI, got %q", station.PhoneURI)
+	}
+	if station.Distance != 0 {
+		t.Fatalf("expected invalid distance to be normalized to 0, got %v", station.Distance)
+	}
+	if len(station.Prices) != 1 {
+		t.Fatalf("expected 1 sanitized price, got %d", len(station.Prices))
+	}
+	if station.Prices[0].FuelType != "E10" || station.Prices[0].Price != 150.5 {
+		t.Fatalf("unexpected sanitized price payload: %#v", station.Prices[0])
+	}
+}
+
 func TestFuelTypesAPIHandler(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)

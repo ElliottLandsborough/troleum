@@ -1192,12 +1192,12 @@ function getMapsUrl(lat, lng, label) {
 }
 
 function buildAddressLinkHtml(pin) {
-    const addressText = pin.address || 'No address available';
+    const addressText = pin?.address || 'No address available';
     if (pin.lat == null || pin.lng == null) {
         return escapeHtml(addressText);
     }
 
-    const mapsUrl = getMapsUrl(pin.lat, pin.lng, pin.name || addressText);
+    const mapsUrl = getMapsUrl(pin.lat, pin.lng, pin?.name || addressText);
     return `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(addressText)}</a>`;
 }
 
@@ -1448,15 +1448,20 @@ function renderPins(pins) {
     pinList.forEach(pin => {
         const id = String(pin.id);
         const sortedPrices = getSortedPrices(pin.prices);
+        const stationName = pin?.name || 'Unnamed Station';
+        const safeStationName = escapeHtml(stationName);
+        const phoneHtml = pin?.phone && pin?.phone_uri
+            ? `<a href="${escapeHtml(pin.phone_uri)}">${escapeHtml(pin.phone)}</a>`
+            : (pin?.phone ? escapeHtml(pin.phone) : 'No phone available');
         if (id === 'user-location') return; // never overwrite the user location marker
         const infoContent = `
             <div class="info-window">
-                <h3>${pin.name}</h3><br />
+                <h3>${safeStationName}</h3><br />
                 <p class="distance">${getDistanceHtmlForPin(pin, isDistanceSelected)}</p><br />
                 <div class="prices-header">⛽ Prices:</div>
                 <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table><br />
                 <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
-                <p class="phone">📞 Telephone:<br />${pin.phone ? `<a href="tel:${pin.phone}">${pin.phone}</a>` : 'No phone available'}</p><br />
+                <p class="phone">📞 Telephone:<br />${phoneHtml}</p><br />
                 <p><a href="#" onclick="showRouteForStation('${escapeHtml(String(pin.id))}'); return false;">Show driving route on map</a></p>
             </div>
         `;
@@ -1465,7 +1470,7 @@ function renderPins(pins) {
             // Keep existing marker and update mutable fields.
             const existingMarker = markersById.get(id);
             setMarkerPosition(existingMarker, { lat: pin.lat, lng: pin.lng });
-            setMarkerTitle(existingMarker, pin.name || '');
+            setMarkerTitle(existingMarker, stationName);
             setMarkerColor(existingMarker, markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT);
 
             const existingInfoWindow = infoWindowsById.get(id);
@@ -1480,7 +1485,7 @@ function renderPins(pins) {
         const marker = createMapMarker({
             position: { lat: pin.lat, lng: pin.lng },
             map,
-            title: pin.name,
+            title: stationName,
             preferLegacy: false,
             pinOptions: {
                 scale: 1,
@@ -1537,10 +1542,11 @@ function renderStationInfo(pins) {
 
     const stationInfoHtml = sortedPinList.map(pin => {
         const sortedPrices = getSortedPrices(pin.prices);
+        const safeStationName = escapeHtml(pin?.name || 'Unnamed Station');
 
         return `
         <div class="location-list-item" data-marker-id="${escapeHtml(String(pin.id))}">
-            <h3>${pin.name}</h3>
+            <h3>${safeStationName}</h3>
             <p class="distance">${getDistanceHtmlForPin(pin, isDistanceSelected)}</p>
             <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td class="price-label">${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td class="price-value">${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table>
             <p><a href="#" class="show-route-link" data-route-id="${escapeHtml(String(pin.id))}">Show driving route on map</a></p>

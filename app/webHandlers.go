@@ -13,6 +13,7 @@ import (
 )
 
 var fuelTypePattern = regexp.MustCompile(`^[A-Z0-9_]{1,16}$`)
+var browserPhonePattern = regexp.MustCompile(`^[0-9+() /.-]{3,32}$`)
 
 // Parameter size limits to prevent abuse
 const (
@@ -38,6 +39,24 @@ type APIResponse struct {
 type FuelTypesResponse struct {
 	Code int      `json:"code"`
 	Data []string `json:"data,omitempty"`
+}
+
+type BrowserFuelPrice struct {
+	FuelType string  `json:"fuel_type"`
+	Price    float64 `json:"price"`
+}
+
+type BrowserStation struct {
+	ID       string             `json:"id"`
+	Name     string             `json:"name"`
+	Lat      FlexFloat          `json:"lat"`
+	Lng      FlexFloat          `json:"lng"`
+	Type     string             `json:"type"`
+	Prices   []BrowserFuelPrice `json:"prices,omitempty"`
+	Address  string             `json:"address"`
+	Phone    string             `json:"phone,omitempty"`
+	PhoneURI string             `json:"phone_uri,omitempty"`
+	Distance float64            `json:"distance"`
 }
 
 // validateQueryParameters checks that query parameters don't exceed reasonable size limits
@@ -408,23 +427,98 @@ func selectStationsForBoundingBox(stations []Station, n int, minLat, minLng, max
 	return selected
 }
 
-func formattedStationsForJS(stations []Station) []map[string]interface{} {
-	// lock the stations mutex while we read from the stations slice to avoid concurrent modification issues
-	formatted := make([]map[string]interface{}, len(stations))
+func formattedStationsForJS(stations []Station) []BrowserStation {
+	formatted := make([]BrowserStation, len(stations))
 	for i, s := range stations {
-		formatted[i] = map[string]interface{}{
-			"id":       s.NodeID,
-			"name":     formatStationName(s),
-			"lat":      s.Location.Latitude,
-			"lng":      s.Location.Longitude,
-			"type":     "landmark",
-			"prices":   getStationPrices(s),
-			"address":  formatStationAddress(s),
-			"phone":    s.PublicPhoneNumber,
-			"distance": s.Distance,
+		phone, phoneURI := sanitizePhoneForBrowser(s.PublicPhoneNumber)
+		formatted[i] = BrowserStation{
+			ID:       s.NodeID,
+			Name:     sanitizeBrowserText(formatStationName(s), "Unnamed Station", 120),
+			Lat:      s.Location.Latitude,
+			Lng:      s.Location.Longitude,
+			Type:     "landmark",
+			Prices:   sanitizeFuelPricesForBrowser(getStationPrices(s)),
+			Address:  sanitizeBrowserText(formatStationAddress(s), "No address available", 200),
+			Phone:    phone,
+			PhoneURI: phoneURI,
+			Distance: sanitizeDistanceForBrowser(s.Distance),
 		}
 	}
 	return formatted
+}
+
+func sanitizeBrowserText(value, fallback string, maxRunes int) string {
+	normalized := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, value)
+
+	normalized = strings.Join(strings.Fields(normalized), " ")
+	normalized = strings.ReplaceAll(normalized, " ,", ",")
+	if normalized == "" {
+		normalized = fallback
+	}
+
+	if maxRunes > 0 {
+		runes := []rune(normalized)
+		if len(runes) > maxRunes {
+			normalized = strings.TrimSpace(string(runes[:maxRunes]))
+		}
+	}
+
+	if normalized == "" {
+		return fallback
+	}
+
+	return normalized
+}
+
+func sanitizeFuelPricesForBrowser(prices []FuelPrice) []BrowserFuelPrice {
+	sanitized := make([]BrowserFuelPrice, 0, len(prices))
+	for _, price := range prices {
+		fuelType := strings.TrimSpace(price.FuelType)
+		if !fuelTypePattern.MatchString(fuelType) {
+			continue
+		}
+		if math.IsNaN(price.Price) || math.IsInf(price.Price, 0) || price.Price < 0 || price.Price > 1000 {
+			continue
+		}
+
+		sanitized = append(sanitized, BrowserFuelPrice{
+			FuelType: fuelType,
+			Price:    price.Price,
+		})
+	}
+	return sanitized
+}
+
+func sanitizePhoneForBrowser(phone string) (string, string) {
+	display := sanitizeBrowserText(phone, "", 32)
+	if display == "" || !browserPhonePattern.MatchString(display) {
+		return "", ""
+	}
+
+	uriDigits := strings.Map(func(r rune) rune {
+		if (r >= '0' && r <= '9') || r == '+' {
+			return r
+		}
+		return -1
+	}, display)
+
+	if !regexp.MustCompile(`^\+?[0-9]{3,20}$`).MatchString(uriDigits) {
+		return "", ""
+	}
+
+	return display, "tel:" + uriDigits
+}
+
+func sanitizeDistanceForBrowser(distance float64) float64 {
+	if math.IsNaN(distance) || math.IsInf(distance, 0) || distance < 0 {
+		return 0
+	}
+	return distance
 }
 
 func formatStationName(s Station) string {
