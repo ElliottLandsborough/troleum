@@ -15,6 +15,9 @@ let userLocationInfoWindow = null;
 let userEstimatedAddress = null;
 let searchLocationInfoWindow = null;
 let searchSetAddress = null;
+let placesAutocomplete = null;
+let requestStationsForCurrentView = null;
+let activeRouteStationId = null;
 const USER_MARKER_Z_INDEX = 1000000;
 const MARKER_COLOR_DEFAULT = '#4285F4';
 const MARKER_COLOR_CHEAPEST = '#34A853';
@@ -79,18 +82,219 @@ function applyMapThemeFromSystem() {
         return;
     }
 
-    const prefersDark = window.matchMedia(MAP_THEME_MEDIA_QUERY).matches;
-    const colorScheme = google?.maps?.ColorScheme;
-
-    if (colorScheme) {
-        map.setOptions({
-            colorScheme: prefersDark ? colorScheme.DARK : colorScheme.LIGHT,
-            styles: null,
-        });
+    if (GOOGLE_MAPS_MAP_ID) {
         return;
     }
 
+    const prefersDark = window.matchMedia(MAP_THEME_MEDIA_QUERY).matches;
+
+    // Explicit styles update reliably when the system theme changes at runtime.
     map.setOptions({ styles: prefersDark ? MAP_DARK_STYLE_FALLBACK : null });
+}
+
+function getMapCenterLiteral(targetMap = map) {
+    const center = targetMap?.getCenter?.();
+    if (!center) {
+        return null;
+    }
+
+    const lat = typeof center.lat === 'function' ? center.lat() : center.lat;
+    const lng = typeof center.lng === 'function' ? center.lng() : center.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return null;
+    }
+
+    return { lat, lng };
+}
+
+function getCurrentMapViewState() {
+    const center = getMapCenterLiteral();
+    const zoom = map?.getZoom?.();
+
+    return {
+        center: center || { lat: 54.23782, lng: -4.555111 },
+        zoom: Number.isFinite(zoom) ? zoom : 6,
+    };
+}
+
+function buildMapOptions(viewState = null) {
+    const mapOptions = {
+        zoom: viewState?.zoom ?? 6,
+        center: viewState?.center ?? { lat: 54.23782, lng: -4.555111 },
+        mapTypeControl: true,
+        streetViewControl: false,
+        //renderingType: RenderingType.VECTOR,
+    };
+
+    if (GOOGLE_MAPS_MAP_ID) {
+        mapOptions.mapId = GOOGLE_MAPS_MAP_ID;
+
+        const colorScheme = google.maps.ColorScheme;
+        if (colorScheme?.DARK && colorScheme?.LIGHT) {
+            mapOptions.colorScheme = window.matchMedia(MAP_THEME_MEDIA_QUERY).matches
+                ? colorScheme.DARK
+                : colorScheme.LIGHT;
+        }
+    }
+
+    return mapOptions;
+}
+
+function createMapInstance(viewState = null) {
+    map = new google.maps.Map(document.getElementById('map'), buildMapOptions(viewState));
+
+    if (!GOOGLE_MAPS_MAP_ID) {
+        applyMapThemeFromSystem();
+    }
+}
+
+function buildLocationMarkerOptions(position, title, zIndex, color) {
+    return {
+        position,
+        map,
+        title,
+        zIndex,
+        pinOptions: {
+            scale: 0.8,
+            background: color,
+            borderColor: '#ffffff',
+            glyphColor: color,
+        },
+        legacyOptions: {
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: color,
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2,
+            },
+        },
+    };
+}
+
+function rebuildMapForThemeChange() {
+    if (!map) {
+        return;
+    }
+
+    if (!GOOGLE_MAPS_MAP_ID) {
+        applyMapThemeFromSystem();
+        return;
+    }
+
+    const viewState = getCurrentMapViewState();
+    const previousSearchMarker = markersById.get('search-location');
+    const previousSearchPosition = previousSearchMarker ? getMarkerPosition(previousSearchMarker) : null;
+    const selectedMarkerId = selectedStationMarkerId;
+    const routedStationId = activeRouteStationId;
+
+    clearTimeout(debounceTimer);
+    abortController?.abort();
+    clearActiveRoutePolylines();
+
+    markersById.forEach(marker => {
+        removeMarker(marker);
+    });
+    infoWindowsById.forEach(infoWindow => {
+        infoWindow.close();
+    });
+
+    markersById = new Map();
+    infoWindowsById = new Map();
+
+    createMapInstance(viewState);
+
+    if (typeof requestStationsForCurrentView === 'function') {
+        map.addListener('idle', requestStationsForCurrentView);
+    }
+
+    if (placesAutocomplete) {
+        placesAutocomplete.bindTo('bounds', map);
+        if (map.getBounds()) {
+            placesAutocomplete.setBounds(map.getBounds());
+        }
+    }
+
+    if (previousSearchPosition) {
+        const lat = typeof previousSearchPosition.lat === 'function' ? previousSearchPosition.lat() : previousSearchPosition.lat;
+        const lng = typeof previousSearchPosition.lng === 'function' ? previousSearchPosition.lng() : previousSearchPosition.lng;
+
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            const rebuiltSearchMarker = createMapMarker(buildLocationMarkerOptions(
+                { lat, lng },
+                'Search Location',
+                999999,
+                '#34A853',
+            ));
+            markersById.set('search-location', rebuiltSearchMarker);
+
+            if (!searchLocationInfoWindow) {
+                searchLocationInfoWindow = new google.maps.InfoWindow({
+                    content: getSearchLocationInfoContent(),
+                });
+            }
+
+            addMarkerClickListener(rebuiltSearchMarker, () => {
+                openSearchLocationInfoWindow();
+            });
+        }
+    }
+
+    if (userLat != null && userLng != null) {
+        const rebuiltUserMarker = createMapMarker(buildLocationMarkerOptions(
+            { lat: userLat, lng: userLng },
+            'Your Location',
+            USER_MARKER_Z_INDEX,
+            '#4285F4',
+        ));
+        markersById.set('user-location', rebuiltUserMarker);
+
+        if (!userLocationInfoWindow) {
+            userLocationInfoWindow = new google.maps.InfoWindow({
+                content: getUserLocationInfoContent(),
+            });
+        }
+
+        addMarkerClickListener(rebuiltUserMarker, () => {
+            openUserLocationInfoWindow();
+        });
+    }
+
+    if (isFollowingMyLocation) {
+        setFollowMeMode();
+    } else if (previousSearchPosition) {
+        const lat = typeof previousSearchPosition.lat === 'function' ? previousSearchPosition.lat() : previousSearchPosition.lat;
+        const lng = typeof previousSearchPosition.lng === 'function' ? previousSearchPosition.lng() : previousSearchPosition.lng;
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            setSearchLocationMode(lat, lng);
+        }
+    } else {
+        updateFollowMeUI();
+    }
+
+    if (latestPins) {
+        renderPins(latestPins);
+        renderStationInfo(latestPins);
+    }
+
+    if (routedStationId) {
+        showRouteForStation(routedStationId);
+        return;
+    }
+
+    if (selectedMarkerId) {
+        openStationInfoWindow(selectedMarkerId);
+    }
+}
+
+function handleMapThemeChange() {
+    if (GOOGLE_MAPS_MAP_ID) {
+        rebuildMapForThemeChange();
+        return;
+    }
+
+    applyMapThemeFromSystem();
 }
 
 function applyLocateButtonState() {
@@ -311,8 +515,9 @@ function createMapMarkerContent(pinOptions = {}) {
 function createMapMarker({ map, position, title, zIndex, pinOptions, legacyOptions = {}, preferLegacy = false }) {
     const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement || google.maps.AdvancedMarkerElement;
     const markerContent = createMapMarkerContent(pinOptions);
+    const canUseAdvancedMarkers = Boolean(GOOGLE_MAPS_MAP_ID);
 
-    if (!preferLegacy && typeof AdvancedMarkerElement === 'function' && (!pinOptions || markerContent)) {
+    if (canUseAdvancedMarkers && !preferLegacy && typeof AdvancedMarkerElement === 'function' && (!pinOptions || markerContent)) {
         const marker = new AdvancedMarkerElement({
             map,
             position,
@@ -890,6 +1095,7 @@ async function showRouteForStation(markerId) {
     try {
         const route = await requestRoute(origin, { lat: pin.lat, lng: pin.lng });
         const routeMiles = extractRouteDistanceMiles(route);
+        activeRouteStationId = String(pin.id);
 
         clearActiveRoutePolylines();
         activeRoutePolylines = route.createPolylines({
@@ -914,6 +1120,7 @@ async function showRouteForStation(markerId) {
             renderStationInfo(latestPins);
         }
     } catch (err) {
+        activeRouteStationId = null;
         console.error(err);
         alert('Could not calculate a driving route for this station.');
     }
@@ -1018,24 +1225,14 @@ function openStationInfoWindow(markerId) {
 }
 
 function initMap() {
-    // Create map centered on the world
-    map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 6,
-        center: { lat: 54.23782, lng: -4.555111 },
-        mapId: GOOGLE_MAPS_MAP_ID,
-        mapTypeControl: true,
-        streetViewControl: false,
-        colorScheme: google?.maps?.ColorScheme?.FOLLOW_SYSTEM,
-        //renderingType: RenderingType.VECTOR,
-    });
+    createMapInstance();
 
     const themeMediaQuery = window.matchMedia(MAP_THEME_MEDIA_QUERY);
     if (typeof themeMediaQuery.addEventListener === 'function') {
-        themeMediaQuery.addEventListener('change', applyMapThemeFromSystem);
+        themeMediaQuery.addEventListener('change', handleMapThemeChange);
     } else if (typeof themeMediaQuery.addListener === 'function') {
-        themeMediaQuery.addListener(applyMapThemeFromSystem);
+        themeMediaQuery.addListener(handleMapThemeChange);
     }
-    applyMapThemeFromSystem();
 
     initDirections().catch(err => {
         console.error('Failed to initialize Routes API:', err);
@@ -1054,28 +1251,12 @@ function initMap() {
 
             // Create or update a marker for the user's location
             if (!markersById.has('user-location')) {
-                const userMarker = createMapMarker({
-                    position: { lat, lng: lon },
-                    map,
-                    title: 'Your Location',
-                    zIndex: USER_MARKER_Z_INDEX,
-                    pinOptions: {
-                        scale: 0.8,
-                        background: '#4285F4',
-                        borderColor: '#ffffff',
-                        glyphColor: '#4285F4',
-                    },
-                    legacyOptions: {
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 8,
-                            fillColor: '#4285F4',
-                            fillOpacity: 1,
-                            strokeColor: '#ffffff',
-                            strokeWeight: 2,
-                        },
-                    },
-                });
+                const userMarker = createMapMarker(buildLocationMarkerOptions(
+                    { lat, lng: lon },
+                    'Your Location',
+                    USER_MARKER_Z_INDEX,
+                    '#4285F4',
+                ));
                 markersById.set('user-location', userMarker);
 
                 if (!userLocationInfoWindow) {
@@ -1115,7 +1296,7 @@ function initMap() {
     // Create bounds to fit all markers
     //const bounds = new google.maps.LatLngBounds();
 
-    function requestStationsForCurrentView() {
+    requestStationsForCurrentView = function requestStationsForCurrentViewImpl() {
         clearTimeout(debounceTimer);
 
         const url = new URL('/api/stations', window.location.origin);
@@ -1155,7 +1336,7 @@ function initMap() {
                 console.error(err);
             }
         }, 200);
-    }
+    };
 
     map.addListener('idle', requestStationsForCurrentView);
 
@@ -1175,15 +1356,15 @@ function initMap() {
         requestStationsForCurrentView();
     });
 
-    const autocomplete = new google.maps.places.Autocomplete(input);
+    placesAutocomplete = new google.maps.places.Autocomplete(input);
 
-    autocomplete.bindTo('bounds', map);
+    placesAutocomplete.bindTo('bounds', map);
 
-    autocomplete.setComponentRestrictions({ country: 'uk' });
-    autocomplete.setBounds(map.getBounds());
+    placesAutocomplete.setComponentRestrictions({ country: 'uk' });
+    placesAutocomplete.setBounds(map.getBounds());
 
-    autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
+    placesAutocomplete.addListener('place_changed', () => {
+        const place = placesAutocomplete.getPlace();
 
         if (!place.geometry) {
             alert('No details available for this location');
@@ -1198,28 +1379,12 @@ function initMap() {
         }
 
         if (!markersById.has('search-location')) {
-            const searchMarker = createMapMarker({
-                position: { lat, lng },
-                map,
-                title: 'Search Location',
-                zIndex: 999999,
-                pinOptions: {
-                    scale: 0.8,
-                    background: '#34A853',
-                    borderColor: '#ffffff',
-                    glyphColor: '#34A853',
-                },
-                legacyOptions: {
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: '#34A853',
-                        fillOpacity: 1,
-                        strokeColor: '#ffffff',
-                        strokeWeight: 2,
-                    },
-                },
-            });
+            const searchMarker = createMapMarker(buildLocationMarkerOptions(
+                { lat, lng },
+                'Search Location',
+                999999,
+                '#34A853',
+            ));
             markersById.set('search-location', searchMarker);
 
             if (!searchLocationInfoWindow) {
