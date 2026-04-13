@@ -1473,7 +1473,7 @@ function renderPins(pins) {
                 <table class="prices"><thead><tr><th>Fuel type</th><th>Price</th></tr></thead><tbody>${sortedPrices.length > 0 ? sortedPrices.map(p => `<tr><td>${getFuelTypeLabelHtml(p.fuel_type, selectedFuelType)}</td><td>${getFuelPriceHtml(p.fuel_type, p.price, selectedFuelType)}</td></tr>`).join('') : '<tr><td colspan="2">No price data available</td></tr>'}</tbody></table><br />
                 <p class="address">📍 Address:<br />${buildAddressLinkHtml(pin)}</p><br />
                 <p class="phone">📞 Telephone:<br />${phoneHtml}</p><br />
-                <p><a href="#" onclick="showRouteForStation('${escapeHtml(String(pin.id))}'); return false;">Show driving route on map</a></p>
+                <p><a href="#" class="info-window-route-link" data-route-id="${escapeHtml(String(pin.id))}">Show driving route on map</a></p>
             </div>
         `;
 
@@ -1621,6 +1621,21 @@ function centerMapOnUserLocation() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('click', event => {
+        const routeLink = event.target?.closest?.('.info-window-route-link');
+        if (!routeLink) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const routeId = routeLink.getAttribute('data-route-id');
+        if (routeId) {
+            showRouteForStation(routeId);
+        }
+    });
+
     updateFollowMeUI();
     initInfoPanelControls();
 });
