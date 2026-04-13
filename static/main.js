@@ -52,6 +52,7 @@ const GEOLOCATION_WATCH_OPTIONS = {
     maximumAge: 120000,
 };
 const INFO_PANEL_STORAGE_KEY = 'troleum_info_panel_open';
+const SORT_OPTION_STORAGE_KEY = 'troleum_sort_option';
 const INFO_PANEL_MOBILE_BREAKPOINT = 900;
 let isInfoPanelOpen = true;
 let isLocatingUser = false;
@@ -102,6 +103,22 @@ function applyLocateButtonState() {
     }
 
     btn.style.cursor = 'pointer';
+}
+
+function loadSortOptionPreference() {
+    try {
+        return localStorage.getItem(SORT_OPTION_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function persistSortOptionPreference(value) {
+    try {
+        localStorage.setItem(SORT_OPTION_STORAGE_KEY, value || 'distance');
+    } catch {
+        // Ignore storage failures (private mode, blocked storage, etc.)
+    }
 }
 
 function startLocatingUser() {
@@ -826,7 +843,9 @@ async function showRouteForStation(markerId) {
 
 function updateSortOptionsFromPins(pinList) {
     const sortSelect = document.getElementById('sort-options');
-    const previousValue = sortSelect.value || 'distance';
+    const currentValue = sortSelect.value || 'distance';
+    const storedValue = loadSortOptionPreference();
+    const previousValue = currentValue !== 'distance' ? currentValue : (storedValue || currentValue);
 
     const uniqueFuelTypes = new Set();
     pinList.forEach(pin => {
@@ -859,6 +878,7 @@ function updateSortOptionsFromPins(pinList) {
 
     const hasPreviousOption = previousValue === 'distance' || uniqueFuelTypes.has(previousValue);
     sortSelect.value = hasPreviousOption ? previousValue : 'distance';
+    persistSortOptionPreference(sortSelect.value);
 }
 
 function escapeHtml(text) {
@@ -1065,6 +1085,7 @@ function initMap() {
     const sortSelect = document.getElementById('sort-options');
 
     sortSelect.addEventListener('change', () => {
+        persistSortOptionPreference(sortSelect.value || 'distance');
         requestStationsForCurrentView();
     });
 
