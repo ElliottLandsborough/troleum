@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -550,5 +552,81 @@ func TestFuelTypesAPIHandler(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "E10") || !strings.Contains(w.Body.String(), "DIESEL") {
 		t.Fatalf("expected fuel types in body, got %s", w.Body.String())
+	}
+}
+
+func TestStationsAPIHandlerLimitsTo100WithoutBbox(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	stationsMutex.Lock()
+	stations = make([]Station, 0, 120)
+	for i := 0; i < 120; i++ {
+		stations = append(stations, Station{NodeID: "s" + strconv.Itoa(i), Location: Location{Latitude: 51.5, Longitude: -0.1}})
+	}
+	stationsMutex.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stations", nil)
+	w := httptest.NewRecorder()
+	stationsAPIHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp APIResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	entries, ok := resp.Data.([]any)
+	if !ok {
+		t.Fatalf("expected response data slice, got %T", resp.Data)
+	}
+	if len(entries) != 100 {
+		t.Fatalf("expected 100 stations returned, got %d", len(entries))
+	}
+}
+
+func TestStationsAPIHandlerLimitsTo100WithBbox(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	stationsMutex.Lock()
+	stations = make([]Station, 0, 120)
+	for i := 0; i < 120; i++ {
+		stations = append(stations, Station{NodeID: "b" + strconv.Itoa(i), Location: Location{Latitude: 51.5, Longitude: -0.1}})
+	}
+	stationsMutex.Unlock()
+
+	priceStationsMutex.Lock()
+	priceStations = make([]PriceStation, 0, 120)
+	priceStationsIndex = make(map[string]int, 120)
+	for i := 0; i < 120; i++ {
+		nodeID := "b" + strconv.Itoa(i)
+		priceStationsIndex[nodeID] = len(priceStations)
+		priceStations = append(priceStations, PriceStation{NodeID: nodeID, FuelPrices: []FuelPrice{{FuelType: "E10", Price: float64(100 + i)}}})
+	}
+	priceStationsMutex.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stations?bbox=51.0,-0.5,52.0,0.5", nil)
+	w := httptest.NewRecorder()
+	stationsAPIHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp APIResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	entries, ok := resp.Data.([]any)
+	if !ok {
+		t.Fatalf("expected response data slice, got %T", resp.Data)
+	}
+	if len(entries) != 100 {
+		t.Fatalf("expected 100 stations returned, got %d", len(entries))
 	}
 }

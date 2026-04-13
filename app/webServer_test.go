@@ -155,6 +155,18 @@ func TestSetupWebServer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/main.js", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from js asset route, got %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/preview.png", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from png asset route, got %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 from fallback route, got %d", w.Code)
