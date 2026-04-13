@@ -1242,11 +1242,11 @@ function initMap() {
 function renderPins(pins) {
     const pinList = Array.isArray(pins?.data) ? pins.data : [];
     console.warn(`Fetched ${pinList.length} pins from the server`);
+    updateSortOptionsFromPins(pinList);
+
     const selectedFuelType = getSelectedFuelSortValue();
     const isDistanceSelected = selectedFuelType == null;
     const markerColorByPinId = buildMarkerColorByPinId(pinList, selectedFuelType);
-
-    updateSortOptionsFromPins(pinList);
 
     const nextIds = new Set(pinList.map(pin => String(pin.id)));
 
