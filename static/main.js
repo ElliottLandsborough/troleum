@@ -16,6 +16,7 @@ let userEstimatedAddress = null;
 let searchLocationInfoWindow = null;
 let searchSetAddress = null;
 let placesAutocomplete = null;
+let locationInputElement = null;
 let requestStationsForCurrentView = null;
 let activeRouteStationId = null;
 const USER_MARKER_Z_INDEX = 1000000;
@@ -90,6 +91,70 @@ function applyMapThemeFromSystem() {
 
     // Explicit styles update reliably when the system theme changes at runtime.
     map.setOptions({ styles: prefersDark ? MAP_DARK_STYLE_FALLBACK : null });
+}
+
+function getLocationInputElement() {
+    return locationInputElement || document.getElementById('location-input');
+}
+
+function setLocationInputValue(value) {
+    const input = getLocationInputElement();
+    if (!input) {
+        return;
+    }
+
+    if ('value' in input) {
+        input.value = value;
+        return;
+    }
+
+    input.setAttribute('value', value);
+}
+
+function setLocationInputPlaceholder(value) {
+    const input = getLocationInputElement();
+    if (!input) {
+        return;
+    }
+
+    if ('placeholder' in input) {
+        input.placeholder = value;
+    } else {
+        input.setAttribute('placeholder', value);
+    }
+}
+
+function setLocationInputDisabled(isDisabled) {
+    const input = getLocationInputElement();
+    if (!input) {
+        return;
+    }
+
+    if ('disabled' in input) {
+        input.disabled = isDisabled;
+    } else if (isDisabled) {
+        input.setAttribute('disabled', '');
+    } else {
+        input.removeAttribute('disabled');
+    }
+}
+
+function setLocationInputOpacity(opacity) {
+    const input = getLocationInputElement();
+    if (!input) {
+        return;
+    }
+
+    input.style.opacity = opacity;
+}
+
+function focusLocationInput() {
+    const input = getLocationInputElement();
+    if (!input || typeof input.focus !== 'function') {
+        return;
+    }
+
+    input.focus();
 }
 
 function getMapCenterLiteral(targetMap = map) {
@@ -209,11 +274,8 @@ function rebuildMapForThemeChange() {
         map.addListener('idle', requestStationsForCurrentView);
     }
 
-    if (placesAutocomplete) {
-        placesAutocomplete.bindTo('bounds', map);
-        if (map.getBounds()) {
-            placesAutocomplete.setBounds(map.getBounds());
-        }
+    if (placesAutocomplete && map.getBounds()) {
+        placesAutocomplete.locationRestriction = map.getBounds();
     }
 
     if (previousSearchPosition) {
@@ -641,7 +703,6 @@ function addMarkerClickListener(marker, handler) {
 
 function updateFollowMeUI() {
     const btn = document.getElementById('my-location');
-    const input = document.getElementById('location-input');
     const toggleBtn = document.getElementById('search-mode-toggle');
 
     if (isFollowingMyLocation) {
@@ -649,8 +710,8 @@ function updateFollowMeUI() {
         if (!isLocatingUser) {
             btn.style.cursor = 'pointer';
         }
-        input.disabled = true;
-        input.style.opacity = '0.5';
+        setLocationInputDisabled(true);
+        setLocationInputOpacity('0.5');
         toggleBtn.style.opacity = '0.5';
         //toggleBtn.style.cursor = 'not-allowed';
         toggleBtn.disabled = false;
@@ -659,8 +720,8 @@ function updateFollowMeUI() {
         if (!isLocatingUser) {
             btn.style.cursor = 'pointer';
         }
-        input.disabled = false;
-        input.style.opacity = '1';
+        setLocationInputDisabled(false);
+        setLocationInputOpacity('1');
         toggleBtn.style.opacity = '1';
         //toggleBtn.style.cursor = 'not-allowed';
         toggleBtn.disabled = true;
@@ -670,18 +731,17 @@ function updateFollowMeUI() {
 }
 
 function populateFollowMeLocationInput(lat, lng) {
-    const input = document.getElementById('location-input');
     const geocoder = new google.maps.Geocoder();
 
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
         if (isFollowingMyLocation && status === 'OK' && results[0]) {
             userEstimatedAddress = results[0].formatted_address;
-            input.value = userEstimatedAddress;
+            setLocationInputValue(userEstimatedAddress);
         } else if (status !== 'OK') {
             console.warn('Reverse geocoding failed:', status);
         }
 
-        input.placeholder = 'Enter a location';
+        setLocationInputPlaceholder('Enter a location');
     });
 }
 
@@ -749,8 +809,8 @@ function applyPendingFollowMeLocation(lat, lng) {
 
 function setFollowMeMode() {
     isFollowingMyLocation = true;
-    document.getElementById('location-input').value = '';
-    document.getElementById('location-input').placeholder = 'Enter a location';
+    setLocationInputValue('');
+    setLocationInputPlaceholder('Enter a location');
 
     markersById.forEach((marker, id) => {
         if (id === 'search-location') {
@@ -787,8 +847,8 @@ function toggleSearchMode() {
             }
         });
         updateFollowMeUI();
-        document.getElementById('location-input').placeholder = 'Enter a location';
-        document.getElementById('location-input').focus();
+        setLocationInputPlaceholder('Enter a location');
+        focusLocationInput();
     } else {
         // Switch back to follow me mode
         setFollowMeMode();
@@ -1340,7 +1400,7 @@ function initMap() {
 
     map.addListener('idle', requestStationsForCurrentView);
 
-    const input = document.getElementById('location-input');
+    const legacyInput = document.getElementById('location-input');
     const sortSelect = document.getElementById('sort-options');
 
     sortSelect.addEventListener('change', () => {
@@ -1356,24 +1416,53 @@ function initMap() {
         requestStationsForCurrentView();
     });
 
-    placesAutocomplete = new google.maps.places.Autocomplete(input);
+    const placeAutocomplete = new google.maps.places.PlaceAutocompleteElement();
+    placeAutocomplete.id = 'location-input';
+    placeAutocomplete.setAttribute('placeholder', 'Enter a location');
+    placeAutocomplete.setAttribute('aria-label', 'Enter a location');
+    placeAutocomplete.includedRegionCodes = ['gb'];
 
-    placesAutocomplete.bindTo('bounds', map);
+    if (legacyInput?.parentNode) {
+        legacyInput.parentNode.replaceChild(placeAutocomplete, legacyInput);
+    }
 
-    placesAutocomplete.setComponentRestrictions({ country: 'uk' });
-    placesAutocomplete.setBounds(map.getBounds());
+    placesAutocomplete = placeAutocomplete;
+    locationInputElement = placeAutocomplete;
 
-    placesAutocomplete.addListener('place_changed', () => {
-        const place = placesAutocomplete.getPlace();
+    if (map.getBounds()) {
+        placeAutocomplete.locationRestriction = map.getBounds();
+    }
 
-        if (!place.geometry) {
+    map.addListener('bounds_changed', () => {
+        if (map.getBounds()) {
+            placeAutocomplete.locationRestriction = map.getBounds();
+        }
+    });
+
+    placeAutocomplete.addEventListener('gmp-select', async event => {
+        const placePrediction = event.placePrediction || event.detail?.placePrediction;
+        if (!placePrediction?.toPlace) {
             alert('No details available for this location');
             return;
         }
 
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        searchSetAddress = place.formatted_address || place.name || null;
+        const place = placePrediction.toPlace();
+        await place.fetchFields({ fields: ['formattedAddress', 'displayName', 'location'] });
+
+        const location = place.location;
+        if (!location) {
+            alert('No details available for this location');
+            return;
+        }
+
+        const lat = typeof location.lat === 'function' ? location.lat() : location.lat;
+        const lng = typeof location.lng === 'function' ? location.lng() : location.lng;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            alert('No details available for this location');
+            return;
+        }
+
+        searchSetAddress = place.formattedAddress || place.displayName || null;
         if (!searchSetAddress) {
             populateSearchLocationAddress(lat, lng);
         }
@@ -1587,7 +1676,7 @@ function centerMapOnUserLocation() {
     if (navigator.geolocation) {
         startLocatingUser();
         console.warn('Attempting to get user location via Geolocation API...');
-        document.getElementById('location-input').placeholder = 'Searching for your location, please wait';
+        setLocationInputPlaceholder('Searching for your location, please wait');
 
         if (userLat !== null && userLng !== null) {
             applyPendingFollowMeLocation(userLat, userLng);
@@ -1615,7 +1704,7 @@ function centerMapOnUserLocation() {
     } else {
         stopLocatingUser();
         console.warn('Geolocation is not supported by this browser, cannot center map on user location');
-        document.getElementById('location-input').placeholder = 'Enter a location';
+        setLocationInputPlaceholder('Enter a location');
     }
 }
 
