@@ -85,7 +85,6 @@ The production image build also stamps a fresh static asset version into the HTM
 - `app/` contains the Go application code
 - `static/` contains the frontend assets served by the app
 - `json/` contains cached API response pages used for local persistence and startup reloads
-- `diagnostics/` contains one-off analysis scripts and reference files
 
 ## Notes
 
