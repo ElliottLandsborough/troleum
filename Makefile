@@ -33,6 +33,11 @@ build-standalone:
 build:
 	docker-compose build
 
+# Run application tests locally before packaging or deploy steps
+.PHONY: test
+test:
+	go test ./app -count=1
+
 # Clean up the binary and containers
 .PHONY: clean
 clean:
@@ -71,7 +76,7 @@ stop:
 	docker-compose down
 
 # prod only commands:
-deploy-to-production: save-image send-image run-remote
+deploy-to-production: test save-image send-image run-remote
 
 # save docker image to file for distribution
 .PHONY: save-image
