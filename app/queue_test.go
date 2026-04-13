@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -458,26 +457,10 @@ func TestRetryFetchPagesZeroNodeIDStillSucceed(t *testing.T) {
 func TestRetryFetchPagesSaveErrorReturnsFalse(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)
-
-	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd failed: %v", err)
+	withTempWorkingDir(t)
+	if err := os.WriteFile("json", []byte("not-a-directory"), 0o600); err != nil {
+		t.Fatalf("write blocking json file failed: %v", err)
 	}
-
-	readonlyDir := filepath.Join(t.TempDir(), "readonly")
-	if err := os.MkdirAll(readonlyDir, 0o755); err != nil {
-		t.Fatalf("mkdir readonly dir failed: %v", err)
-	}
-	if err := os.Chmod(readonlyDir, 0o500); err != nil {
-		t.Fatalf("chmod readonly dir failed: %v", err)
-	}
-	if err := os.Chdir(readonlyDir); err != nil {
-		t.Fatalf("chdir readonly dir failed: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chmod(readonlyDir, 0o700)
-		_ = os.Chdir(originalWD)
-	})
 
 	bodyWithNode := `[{"node_id":"station-1"}]`
 	client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {

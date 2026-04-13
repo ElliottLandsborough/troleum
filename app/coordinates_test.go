@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"io"
+	"log"
+	"testing"
+)
 
 func setUKGeofenceStateForTest(polygons [][]geoPoint, loaded bool) func() {
 	ukPolygonMutex.Lock()
@@ -108,6 +112,14 @@ func TestNormalizeUKStationCoordinates(t *testing.T) {
 			shouldSucceed: true,
 		},
 		{
+			name:          "fraserburgh remains valid",
+			lat:           57.690535,
+			lng:           -2.0332844,
+			wantLat:       57.690535,
+			wantLng:       -2.0332844,
+			shouldSucceed: true,
+		},
+		{
 			name:          "unrecoverable coordinate rejected",
 			lat:           42.258815,
 			lng:           -0.288478,
@@ -174,6 +186,12 @@ func TestIsWithinUKGeofence(t *testing.T) {
 			name: "mansfield corrected negative longitude inside geofence",
 			lat:  53.1421,
 			lng:  -1.2067,
+			want: true,
+		},
+		{
+			name: "fraserburgh inside geofence",
+			lat:  57.690535,
+			lng:  -2.0332844,
 			want: true,
 		},
 	}
@@ -272,6 +290,12 @@ func TestHasUKGeofenceData(t *testing.T) {
 			ukPolygonLoaded = prevLoaded
 			ukBoundaryFilePaths = prevPaths
 			ukPolygonMutex.Unlock()
+		})
+
+		prevLogWriter := log.Writer()
+		log.SetOutput(io.Discard)
+		t.Cleanup(func() {
+			log.SetOutput(prevLogWriter)
 		})
 
 		if hasUKGeofenceData() {
