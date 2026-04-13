@@ -281,21 +281,26 @@ body.info-closed #info {
 
 .top-nav {
     height: 64px;
+    display: flex;
 }
 
 .top-nav #location-input {
     height: 64px;
     width: calc(100% - 64px);
-    float: left;
+    display: block;
     background: var(--control-bg);
     color: var(--text);
+    border: 1px solid var(--control-border);
+    border-right: 0;
+    padding: 20px;
+    font-size: 20px;
+    line-height: 64px;
 }
 
 .top-nav #menu-toggle {
     height: 64px;
     width: 64px;
     cursor: pointer;
-    float: left;
     line-height: 64px;
     padding-top: 8px;
     display: block;
