@@ -213,12 +213,13 @@ function createMapInstance(viewState = null) {
     }
 }
 
-function buildLocationMarkerOptions(position, title, zIndex, color) {
+function buildLocationMarkerOptions(position, title, zIndex, color, preferLegacy = false) {
     return {
         position,
         map,
         title,
         zIndex,
+        preferLegacy,
         pinOptions: {
             scale: 0.8,
             background: color,
@@ -309,6 +310,7 @@ function rebuildMapForThemeChange() {
             'Your Location',
             USER_MARKER_Z_INDEX,
             '#4285F4',
+            true,
         ));
         markersById.set('user-location', rebuiltUserMarker);
 
@@ -951,7 +953,7 @@ function buildMarkerColorByPinId(pinList, selectedFuelType) {
 
     if (pricedPins.length === 0) {
         pinList.forEach(pin => {
-            colorByPinId.set(String(pin.id), MARKER_COLOR_DEFAULT);
+            colorByPinId.set(String(pin.id), MARKER_COLOR_EXPENSIVE);
         });
         return colorByPinId;
     }
@@ -975,7 +977,7 @@ function buildMarkerColorByPinId(pinList, selectedFuelType) {
     pinList.forEach(pin => {
         const id = String(pin.id);
         if (!colorByPinId.has(id)) {
-            colorByPinId.set(id, MARKER_COLOR_DEFAULT);
+            colorByPinId.set(id, MARKER_COLOR_EXPENSIVE);
         }
     });
 
@@ -1318,6 +1320,7 @@ function initMap() {
                     'Your Location',
                     USER_MARKER_Z_INDEX,
                     '#4285F4',
+                    true,
                 ));
                 markersById.set('user-location', userMarker);
 
