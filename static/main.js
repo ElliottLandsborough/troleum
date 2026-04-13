@@ -68,9 +68,21 @@ const GEOLOCATION_WATCH_OPTIONS = {
 const INFO_PANEL_STORAGE_KEY = 'troleum_info_panel_open';
 const SORT_OPTION_STORAGE_KEY = 'troleum_sort_option';
 const INFO_PANEL_MOBILE_BREAKPOINT = 900;
+const SHOULD_LOG_TO_CONSOLE = window.location.hostname === '127.0.0.1';
 let isInfoPanelOpen = true;
 let isLocatingUser = false;
 let locatingUserTimeoutId = null;
+
+function localConsole(method, ...args) {
+    if (!SHOULD_LOG_TO_CONSOLE) {
+        return;
+    }
+
+    const logger = console?.[method];
+    if (typeof logger === 'function') {
+        logger(...args);
+    }
+}
 
 const MAP_DARK_STYLE_FALLBACK = [
     { elementType: 'geometry', stylers: [{ color: '#1f2630' }] },
@@ -394,11 +406,11 @@ function startLocatingUser() {
             return;
         }
 
-        console.warn('Geolocation request timed out, location button re-enabled');
+        localConsole('warn', 'Geolocation request timed out, location button re-enabled');
 
         if (navigator.permissions?.query) {
             navigator.permissions.query({ name: 'geolocation' }).then(result => {
-                console.warn(`[GEO] Permission state after timeout: ${result.state}`);
+                localConsole('warn', `[GEO] Permission state after timeout: ${result.state}`);
             }).catch(() => {
                 // Ignore permissions API errors; not supported in some browsers.
             });
@@ -439,16 +451,16 @@ function logGeolocationError(context, error) {
 
     switch (code) {
     case 1:
-        console.warn(`[GEO] ${context}: permission denied (${message})`);
+        localConsole('warn', `[GEO] ${context}: permission denied (${message})`);
         break;
     case 2:
-        console.warn(`[GEO] ${context}: position unavailable (${message})`);
+        localConsole('warn', `[GEO] ${context}: position unavailable (${message})`);
         break;
     case 3:
-        console.warn(`[GEO] ${context}: request timed out (${message})`);
+        localConsole('warn', `[GEO] ${context}: request timed out (${message})`);
         break;
     default:
-        console.warn(`[GEO] ${context}: ${message}`);
+        localConsole('warn', `[GEO] ${context}: ${message}`);
     }
 }
 
@@ -679,7 +691,7 @@ function populateFollowMeLocationInput(lat, lng) {
             userEstimatedAddress = results[0].formatted_address;
             setLocationInputValue(userEstimatedAddress);
         } else if (status !== 'OK') {
-            console.warn('Reverse geocoding failed:', status);
+            localConsole('warn', 'Reverse geocoding failed:', status);
         }
 
         setLocationInputPlaceholder('Enter a location');
@@ -712,7 +724,7 @@ function populateSearchLocationAddress(lat, lng) {
         if (status === 'OK' && results[0]) {
             searchSetAddress = results[0].formatted_address;
         } else if (status !== 'OK') {
-            console.warn('Search location reverse geocoding failed:', status);
+            localConsole('warn', 'Search location reverse geocoding failed:', status);
         }
     });
 }
@@ -797,7 +809,7 @@ function preloadFuelTypes() {
             return fuelTypes;
         })
         .catch(err => {
-            console.error('Failed to preload fuel types:', err);
+            localConsole('error', 'Failed to preload fuel types:', err);
             fuelTypes = [];
             return fuelTypes;
         });
@@ -1061,7 +1073,7 @@ async function requestRoute(origin, destination) {
 
 async function showRouteForStation(markerId) {
     if (!routesApiRouteClass) {
-        console.warn('Routes API is not initialized yet');
+        localConsole('warn', 'Routes API is not initialized yet');
         return;
     }
 
@@ -1108,7 +1120,7 @@ async function showRouteForStation(markerId) {
         }
     } catch (err) {
         activeRouteStationId = null;
-        console.error(err);
+        localConsole('error', err);
         alert('Could not calculate a driving route for this station.');
     }
 }
@@ -1222,7 +1234,7 @@ function initMap() {
     }
 
     initDirections().catch(err => {
-        console.error('Failed to initialize Routes API:', err);
+        localConsole('error', 'Failed to initialize Routes API:', err);
     });
 
     // Constantly update a blue dot on the map showing the user's current location, and center the map on it when the page loads
@@ -1322,7 +1334,7 @@ function initMap() {
                 renderStationInfo(pins);
             } catch (err) {
                 if (err.name === 'AbortError') return; // expected, ignore
-                console.error(err);
+                localConsole('error', err);
             }
         }, 200);
     };
@@ -1425,7 +1437,7 @@ function initMap() {
 
 function renderPins(pins) {
     const pinList = Array.isArray(pins?.data) ? pins.data : [];
-    console.warn(`Fetched ${pinList.length} pins from the server`);
+    localConsole('warn', `Fetched ${pinList.length} pins from the server`);
     updateSortOptionsFromPins(pinList);
 
     const selectedFuelType = getSelectedFuelSortValue();
@@ -1587,7 +1599,7 @@ function centerMapOnUserLocation() {
 
     if (navigator.geolocation) {
         startLocatingUser();
-        console.warn('Attempting to get user location via Geolocation API...');
+        localConsole('warn', 'Attempting to get user location via Geolocation API...');
         setLocationInputPlaceholder('Searching for your location, please wait');
 
         if (userLat !== null && userLng !== null) {
@@ -1615,7 +1627,7 @@ function centerMapOnUserLocation() {
         }, GEOLOCATION_CACHED_FIRST_OPTIONS);
     } else {
         stopLocatingUser();
-        console.warn('Geolocation is not supported by this browser, cannot center map on user location');
+        localConsole('warn', 'Geolocation is not supported by this browser, cannot center map on user location');
         setLocationInputPlaceholder('Enter a location');
     }
 }
