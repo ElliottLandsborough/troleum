@@ -288,7 +288,8 @@ function rebuildMapForThemeChange() {
                 { lat, lng },
                 'Search Location',
                 999999,
-                '#34A853',
+                    MARKER_COLOR_DEFAULT,
+                    true,
             ));
             markersById.set('search-location', rebuiltSearchMarker);
 
@@ -309,7 +310,7 @@ function rebuildMapForThemeChange() {
             { lat: userLat, lng: userLng },
             'Your Location',
             USER_MARKER_Z_INDEX,
-            '#4285F4',
+            MARKER_COLOR_DEFAULT,
             true,
         ));
         markersById.set('user-location', rebuiltUserMarker);
@@ -359,22 +360,6 @@ function handleMapThemeChange() {
     }
 
     applyMapThemeFromSystem();
-}
-
-function applyLocateButtonState() {
-    const btn = document.getElementById('my-location');
-    if (!btn) {
-        return;
-    }
-
-    btn.classList.toggle('is-locating', isLocatingUser);
-    btn.disabled = isLocatingUser;
-    if (isLocatingUser) {
-        btn.style.cursor = 'wait';
-        return;
-    }
-
-    btn.style.cursor = 'pointer';
 }
 
 function loadSortOptionPreference() {
@@ -433,7 +418,6 @@ function startLocatingUser() {
         stopLocatingUser();
     }, GEOLOCATE_TIMEOUT_MS);
 
-    applyLocateButtonState();
 }
 
 function stopLocatingUser() {
@@ -442,8 +426,6 @@ function stopLocatingUser() {
         clearTimeout(locatingUserTimeoutId);
         locatingUserTimeoutId = null;
     }
-
-    applyLocateButtonState();
 }
 
 function logGeolocationError(context, error) {
@@ -704,32 +686,8 @@ function addMarkerClickListener(marker, handler) {
 }
 
 function updateFollowMeUI() {
-    const btn = document.getElementById('my-location');
-    const toggleBtn = document.getElementById('search-mode-toggle');
-
-    if (isFollowingMyLocation) {
-        btn.style.opacity = '0.5';
-        if (!isLocatingUser) {
-            btn.style.cursor = 'pointer';
-        }
-        setLocationInputDisabled(true);
-        setLocationInputOpacity('0.5');
-        toggleBtn.style.opacity = '0.5';
-        //toggleBtn.style.cursor = 'not-allowed';
-        toggleBtn.disabled = false;
-    } else {
-        btn.style.opacity = '1';
-        if (!isLocatingUser) {
-            btn.style.cursor = 'pointer';
-        }
-        setLocationInputDisabled(false);
-        setLocationInputOpacity('1');
-        toggleBtn.style.opacity = '1';
-        //toggleBtn.style.cursor = 'not-allowed';
-        toggleBtn.disabled = true;
-    }
-
-    applyLocateButtonState();
+    setLocationInputDisabled(false);
+    setLocationInputOpacity('1');
 }
 
 function populateFollowMeLocationInput(lat, lng) {
@@ -819,7 +777,7 @@ function setFollowMeMode() {
             setMarkerVisible(marker, false);
         } else if (id === 'user-location') {
             setMarkerVisible(marker, true);
-            setMarkerColor(marker, '#4285F4');
+            setMarkerColor(marker, MARKER_COLOR_DEFAULT);
             setMarkerZIndex(marker, USER_MARKER_Z_INDEX);
         }
     });
@@ -835,28 +793,12 @@ function setSearchLocationMode(lat, lng) {
             setMarkerVisible(marker, false);
         } else if (id === 'search-location') {
             setMarkerVisible(marker, true);
+            setMarkerColor(marker, MARKER_COLOR_DEFAULT);
+            setMarkerZIndex(marker, USER_MARKER_Z_INDEX);
         }
     });
 
     updateFollowMeUI();
-}
-
-function toggleSearchMode() {
-    if (isFollowingMyLocation) {
-        // Switch to search mode (blue dot hidden, input enabled)
-        isFollowingMyLocation = false;
-        markersById.forEach((marker, id) => {
-            if (id === 'user-location') {
-                setMarkerVisible(marker, false);
-            }
-        });
-        updateFollowMeUI();
-        setLocationInputPlaceholder('Enter a location');
-        focusLocationInput();
-    } else {
-        // Switch back to follow me mode
-        setFollowMeMode();
-    }
 }
 
 function preloadFuelTypes() {
@@ -1319,7 +1261,7 @@ function initMap() {
                     { lat, lng: lon },
                     'Your Location',
                     USER_MARKER_Z_INDEX,
-                    '#4285F4',
+                    MARKER_COLOR_DEFAULT,
                     true,
                 ));
                 markersById.set('user-location', userMarker);
@@ -1337,7 +1279,7 @@ function initMap() {
                 const userMarker = markersById.get('user-location');
                 setMarkerPosition(userMarker, { lat, lng: lon });
                 setMarkerZIndex(userMarker, USER_MARKER_Z_INDEX);
-                setMarkerColor(userMarker, '#4285F4');
+                setMarkerColor(userMarker, MARKER_COLOR_DEFAULT);
                 if (isFollowingMyLocation) {
                     setMarkerVisible(userMarker, true);
                 }
@@ -1477,8 +1419,9 @@ function initMap() {
             const searchMarker = createMapMarker(buildLocationMarkerOptions(
                 { lat, lng },
                 'Search Location',
-                999999,
-                '#34A853',
+                USER_MARKER_Z_INDEX,
+                MARKER_COLOR_CHEAPEST,
+                true,
             ));
             markersById.set('search-location', searchMarker);
 

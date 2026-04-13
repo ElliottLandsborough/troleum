@@ -285,7 +285,7 @@ body.info-closed #info {
 
 .top-nav #location-input {
     height: 64px;
-    width: calc(100% - 64px - 64px - 64px);
+    width: calc(100% - 64px);
     font-size: 20px;
     line-height: 64px;
     padding: 20px;
@@ -293,80 +293,6 @@ body.info-closed #info {
     background: var(--control-bg);
     color: var(--text);
     border: 1px solid var(--control-border);
-}
-
-.top-nav #my-location {
-    height: 64px;
-    width: 64px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    line-height: 1;
-    cursor: pointer;
-    float: left;
-    background: var(--control-bg);
-    color: var(--text);
-    border: 1px solid var(--control-border);
-}
-
-.top-nav #my-location .location-icon {
-    width: 28px;
-    height: 28px;
-    display: block;
-}
-
-.top-nav #my-location .location-icon path {
-    stroke: currentColor;
-}
-
-.top-nav #my-location .location-icon circle {
-    fill: currentColor;
-}
-
-.top-nav #my-location .location-spinner {
-    display: none;
-    width: 24px;
-    height: 24px;
-    border: 2.5px solid var(--spinner);
-    border-right-color: transparent;
-    border-radius: 50%;
-    box-sizing: border-box;
-}
-
-.top-nav #my-location.is-locating .location-icon-pin {
-    display: none;
-}
-
-.top-nav #my-location.is-locating .location-spinner {
-    display: block;
-    animation: locating-spin 0.85s linear infinite;
-}
-
-@keyframes locating-spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.top-nav #search-mode-toggle {
-    height: 64px;
-    width: 64px;
-    font-size: 24px;
-    line-height: 64px;
-    cursor: pointer;
-    float: left;
-    background: var(--control-bg);
-    color: var(--text);
-    border: 1px solid var(--control-border);
-}
-
-.top-nav #search-mode-toggle:disabled {
-    cursor: not-allowed;
 }
 
 .top-nav #menu-toggle {
