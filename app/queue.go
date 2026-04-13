@@ -242,8 +242,6 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 		return false
 	}
 
-	log.Printf("[RETRY-STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
-
 	return true
 }
 
@@ -309,8 +307,6 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 	if err != nil {
 		return false
 	}
-
-	log.Printf("[RETRY-PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	return true
 }

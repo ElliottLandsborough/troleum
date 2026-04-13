@@ -262,8 +262,6 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 		log.Printf("[STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
 
-	log.Printf("[STATIONS] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
-
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
 	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[STATIONS] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
@@ -345,8 +343,6 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	} else {
 		log.Printf("[PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
 	}
-
-	log.Printf("[PRICES] Saved request log for page %d with status %d", pageNum, resp.StatusCode)
 
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
 	if nodeIdCount < NodeIDCountThreshold {
