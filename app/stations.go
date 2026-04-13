@@ -9,7 +9,10 @@ import (
 )
 
 var stationsCycleWait = time.After
+var stationsAbortCycleWait = time.After
 var fetchStationsPageForCycle = fetchStationsPage
+
+const stationsAbortCycleBackoff = 5 * time.Minute
 
 type Station struct {
 	NodeID                      string       `json:"node_id"`
@@ -107,9 +110,9 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 			log.Println("[STATIONS] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchStationsPageForCycle(ctx, client, currentPage, rateLimiter)
+		fetchResult := fetchStationsPageForCycle(ctx, client, currentPage, rateLimiter)
 
-		if isLastPage {
+		if fetchResult == pageFetchFinalPage {
 			cycleDuration := time.Since(cycleStartTime)
 			now := time.Now()
 
@@ -119,7 +122,22 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 
 			log.Printf("[STATIONS] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
-		} else {
+			continue
+		}
+
+		if fetchResult == pageFetchAbortCycle {
+			log.Printf("[STATIONS] Cycle aborted before final page (stopped at page %d), retrying from page 1 after %v", currentPage, stationsAbortCycleBackoff)
+			currentPage = 1
+			select {
+			case <-ctx.Done():
+				log.Println("[STATIONS] Shutdown requested, stopping fetch worker")
+				return
+			case <-stationsAbortCycleWait(stationsAbortCycleBackoff):
+			}
+			continue
+		}
+
+		if fetchResult == pageFetchContinue {
 			currentPage++
 		}
 	}

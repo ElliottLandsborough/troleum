@@ -48,6 +48,14 @@ type OAuthClient struct {
 	mu        sync.Mutex
 }
 
+type pageFetchResult int
+
+const (
+	pageFetchContinue pageFetchResult = iota
+	pageFetchFinalPage
+	pageFetchAbortCycle
+)
+
 // Constructor
 func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient {
 	return &OAuthClient{
@@ -156,13 +164,13 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 	return nil
 }
 
-func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, rateLimiter *time.Ticker) pageFetchResult {
 	// Wait for rate limiter only when we're about to make an API call
 	log.Printf("[STATIONS] Waiting for rate limiter before fetching page %d", pageNum)
 	select {
 	case <-ctx.Done():
 		log.Printf("[STATIONS] Shutdown requested, aborting page %d fetch", pageNum)
-		return false
+		return pageFetchAbortCycle
 	case <-rateLimiter.C:
 	}
 
@@ -176,7 +184,7 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	if err != nil {
 		log.Printf("[STATIONS] Error making request for page %d: %v", pageNum, err)
 		globalRetryQueue.AddRequest(pageNum, true)
-		return false
+		return pageFetchContinue
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -185,16 +193,16 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 
 		if resp.StatusCode == http.StatusNotFound {
 			log.Printf("[STATIONS] Page %d returned 404, treating as last page", pageNum)
-			return true
+			return pageFetchFinalPage
 		}
 
 		if isRetriableStatusCode(resp.StatusCode) {
 			globalRetryQueue.AddRequest(pageNum, true)
-			return false
+			return pageFetchContinue
 		}
 
 		log.Printf("[STATIONS] Non-retriable status %d on page %d, ending cycle to avoid runaway paging", resp.StatusCode, pageNum)
-		return true
+		return pageFetchAbortCycle
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -203,7 +211,7 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	if err != nil {
 		log.Printf("[STATIONS] Error reading response body for page %d: %v", pageNum, err)
 		globalRetryQueue.AddRequest(pageNum, true)
-		return false
+		return pageFetchContinue
 	}
 
 	bodyString := string(body)
@@ -214,7 +222,7 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
 		log.Printf("[STATIONS] Page %d contains no node_id occurrences, treating as last page", pageNum)
-		return true
+		return pageFetchFinalPage
 	}
 
 	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
@@ -234,19 +242,19 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
 	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[STATIONS] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
-		return true
+		return pageFetchFinalPage
 	}
 
-	return false
+	return pageFetchContinue
 }
 
-func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rateLimiter *time.Ticker) bool {
+func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rateLimiter *time.Ticker) pageFetchResult {
 	// Wait for rate limiter only when we're about to make an API call
 	log.Printf("[PRICES] Waiting for rate limiter before fetching page %d", pageNum)
 	select {
 	case <-ctx.Done():
 		log.Printf("[PRICES] Shutdown requested, aborting page %d fetch", pageNum)
-		return false
+		return pageFetchAbortCycle
 	case <-rateLimiter.C:
 	}
 
@@ -260,7 +268,7 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	if err != nil {
 		log.Printf("[PRICES] Error making request for page %d: %v", pageNum, err)
 		globalRetryQueue.AddRequest(pageNum, false)
-		return false
+		return pageFetchContinue
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -269,16 +277,16 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 
 		if resp.StatusCode == http.StatusNotFound {
 			log.Printf("[PRICES] Page %d returned 404, treating as last page", pageNum)
-			return true
+			return pageFetchFinalPage
 		}
 
 		if isRetriableStatusCode(resp.StatusCode) {
 			globalRetryQueue.AddRequest(pageNum, false)
-			return false
+			return pageFetchContinue
 		}
 
 		log.Printf("[PRICES] Non-retriable status %d on page %d, ending cycle to avoid runaway paging", resp.StatusCode, pageNum)
-		return true
+		return pageFetchAbortCycle
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -287,7 +295,7 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	if err != nil {
 		log.Printf("[PRICES] Error reading response body for page %d: %v", pageNum, err)
 		globalRetryQueue.AddRequest(pageNum, false)
-		return false
+		return pageFetchContinue
 	}
 
 	bodyString := string(body)
@@ -298,7 +306,7 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
 		log.Printf("[PRICES] Page %d contains no node_id occurrences, treating as last page", pageNum)
-		return true
+		return pageFetchFinalPage
 	}
 
 	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
@@ -318,8 +326,8 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
 	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[PRICES] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
-		return true
+		return pageFetchFinalPage
 	}
 
-	return false
+	return pageFetchContinue
 }

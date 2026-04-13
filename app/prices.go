@@ -8,7 +8,10 @@ import (
 )
 
 var pricesCycleWait = time.After
+var pricesAbortCycleWait = time.After
 var fetchPricesPageForCycle = fetchPricesPage
+
+const pricesAbortCycleBackoff = 2 * time.Minute
 
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint
 type FuelPrice struct {
@@ -181,9 +184,9 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 			log.Println("[PRICES] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchPricesPageForCycle(ctx, client, currentPage, rateLimiter)
+		fetchResult := fetchPricesPageForCycle(ctx, client, currentPage, rateLimiter)
 
-		if isLastPage {
+		if fetchResult == pageFetchFinalPage {
 			cycleDuration := time.Since(cycleStartTime)
 			now := time.Now()
 
@@ -193,7 +196,22 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 
 			log.Printf("[PRICES] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
-		} else {
+			continue
+		}
+
+		if fetchResult == pageFetchAbortCycle {
+			log.Printf("[PRICES] Cycle aborted before final page (stopped at page %d), retrying from page 1 after %v", currentPage, pricesAbortCycleBackoff)
+			currentPage = 1
+			select {
+			case <-ctx.Done():
+				log.Println("[PRICES] Shutdown requested, stopping fetch worker")
+				return
+			case <-pricesAbortCycleWait(pricesAbortCycleBackoff):
+			}
+			continue
+		}
+
+		if fetchResult == pageFetchContinue {
 			currentPage++
 		}
 	}

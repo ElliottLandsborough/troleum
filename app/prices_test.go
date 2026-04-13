@@ -105,10 +105,12 @@ func TestContinuousFetchPricesStopsWhenContextCanceled(t *testing.T) {
 
 func TestContinuousFetchPricesSkipsWithinLimit(t *testing.T) {
 	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
 	originalFetch := fetchPricesPageForCycle
 	originalLast := lastPricesCycleComplete
 	t.Cleanup(func() {
 		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
 		fetchPricesPageForCycle = originalFetch
 		lastPricesCycleComplete = originalLast
 	})
@@ -123,9 +125,9 @@ func TestContinuousFetchPricesSkipsWithinLimit(t *testing.T) {
 		ch <- time.Now()
 		return ch
 	}
-	fetchPricesPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+	fetchPricesPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) pageFetchResult {
 		calledFetch = true
-		return true
+		return pageFetchFinalPage
 	}
 
 	rateLimiter := time.NewTicker(time.Hour)
@@ -139,10 +141,12 @@ func TestContinuousFetchPricesSkipsWithinLimit(t *testing.T) {
 
 func TestContinuousFetchPricesPageProgression(t *testing.T) {
 	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
 	originalFetch := fetchPricesPageForCycle
 	originalLast := lastPricesCycleComplete
 	t.Cleanup(func() {
 		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
 		fetchPricesPageForCycle = originalFetch
 		lastPricesCycleComplete = originalLast
 	})
@@ -151,13 +155,13 @@ func TestContinuousFetchPricesPageProgression(t *testing.T) {
 	lastPricesCycleComplete = time.Time{}
 
 	seenPages := make([]int, 0, 2)
-	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) bool {
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
 		seenPages = append(seenPages, page)
 		if len(seenPages) == 1 {
-			return false
+			return pageFetchContinue
 		}
 		cancel()
-		return true
+		return pageFetchFinalPage
 	}
 
 	rateLimiter := time.NewTicker(time.Hour)
@@ -172,10 +176,12 @@ func TestContinuousFetchPricesPageProgression(t *testing.T) {
 
 func TestContinuousFetchPricesCancelDuringSkipWait(t *testing.T) {
 	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
 	originalFetch := fetchPricesPageForCycle
 	originalLast := lastPricesCycleComplete
 	t.Cleanup(func() {
 		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
 		fetchPricesPageForCycle = originalFetch
 		lastPricesCycleComplete = originalLast
 	})
@@ -187,9 +193,9 @@ func TestContinuousFetchPricesCancelDuringSkipWait(t *testing.T) {
 	pricesCycleWait = func(time.Duration) <-chan time.Time {
 		return make(chan time.Time)
 	}
-	fetchPricesPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+	fetchPricesPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) pageFetchResult {
 		calledFetch = true
-		return true
+		return pageFetchFinalPage
 	}
 
 	rateLimiter := time.NewTicker(time.Hour)

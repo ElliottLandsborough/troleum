@@ -46,10 +46,12 @@ func TestContinuousFetchStationsStopsWhenContextCanceled(t *testing.T) {
 
 func TestContinuousFetchStationsSkipsWithinHourlyLimit(t *testing.T) {
 	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
 	originalFetch := fetchStationsPageForCycle
 	originalLast := lastStationsCycleComplete
 	t.Cleanup(func() {
 		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
 		fetchStationsPageForCycle = originalFetch
 		lastStationsCycleComplete = originalLast
 	})
@@ -64,9 +66,9 @@ func TestContinuousFetchStationsSkipsWithinHourlyLimit(t *testing.T) {
 		ch <- time.Now()
 		return ch
 	}
-	fetchStationsPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+	fetchStationsPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) pageFetchResult {
 		calledFetch = true
-		return true
+		return pageFetchFinalPage
 	}
 
 	rateLimiter := time.NewTicker(time.Hour)
@@ -80,10 +82,12 @@ func TestContinuousFetchStationsSkipsWithinHourlyLimit(t *testing.T) {
 
 func TestContinuousFetchStationsPageProgression(t *testing.T) {
 	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
 	originalFetch := fetchStationsPageForCycle
 	originalLast := lastStationsCycleComplete
 	t.Cleanup(func() {
 		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
 		fetchStationsPageForCycle = originalFetch
 		lastStationsCycleComplete = originalLast
 	})
@@ -92,13 +96,13 @@ func TestContinuousFetchStationsPageProgression(t *testing.T) {
 	lastStationsCycleComplete = time.Time{}
 
 	seenPages := make([]int, 0, 2)
-	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) bool {
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
 		seenPages = append(seenPages, page)
 		if len(seenPages) == 1 {
-			return false
+			return pageFetchContinue
 		}
 		cancel()
-		return true
+		return pageFetchFinalPage
 	}
 
 	rateLimiter := time.NewTicker(time.Hour)
@@ -113,10 +117,12 @@ func TestContinuousFetchStationsPageProgression(t *testing.T) {
 
 func TestContinuousFetchStationsCancelDuringSkipWait(t *testing.T) {
 	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
 	originalFetch := fetchStationsPageForCycle
 	originalLast := lastStationsCycleComplete
 	t.Cleanup(func() {
 		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
 		fetchStationsPageForCycle = originalFetch
 		lastStationsCycleComplete = originalLast
 	})
@@ -128,9 +134,9 @@ func TestContinuousFetchStationsCancelDuringSkipWait(t *testing.T) {
 	stationsCycleWait = func(time.Duration) <-chan time.Time {
 		return make(chan time.Time)
 	}
-	fetchStationsPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+	fetchStationsPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) pageFetchResult {
 		calledFetch = true
-		return true
+		return pageFetchFinalPage
 	}
 
 	rateLimiter := time.NewTicker(time.Hour)

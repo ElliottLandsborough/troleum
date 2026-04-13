@@ -211,7 +211,7 @@ func TestGetValidTokenRefreshAndFallback(t *testing.T) {
 	})
 }
 
-func TestFetchPagesReturnFalseWhenContextCanceled(t *testing.T) {
+func TestFetchPagesReturnAbortWhenContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -220,11 +220,11 @@ func TestFetchPagesReturnFalseWhenContextCanceled(t *testing.T) {
 
 	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
 
-	if got := fetchStationsPage(ctx, client, 1, rateLimiter); got {
-		t.Fatal("expected canceled stations fetch to return false")
+	if got := fetchStationsPage(ctx, client, 1, rateLimiter); got != pageFetchAbortCycle {
+		t.Fatalf("expected canceled stations fetch to abort cycle, got %v", got)
 	}
-	if got := fetchPricesPage(ctx, client, 1, rateLimiter); got {
-		t.Fatal("expected canceled prices fetch to return false")
+	if got := fetchPricesPage(ctx, client, 1, rateLimiter); got != pageFetchAbortCycle {
+		t.Fatalf("expected canceled prices fetch to abort cycle, got %v", got)
 	}
 }
 
@@ -242,8 +242,8 @@ func TestFetchPagesRequestErrorQueuesRetry(t *testing.T) {
 			return nil, errors.New("boom")
 		}))
 
-		if got := fetchStationsPage(context.Background(), client, 9, rateLimiter); got {
-			t.Fatal("expected false when stations request fails")
+		if got := fetchStationsPage(context.Background(), client, 9, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when stations request fails, got %v", got)
 		}
 		if len(globalRetryQueue.requests) != 1 {
 			t.Fatalf("expected one queued retry, got %d", len(globalRetryQueue.requests))
@@ -259,8 +259,8 @@ func TestFetchPagesRequestErrorQueuesRetry(t *testing.T) {
 			return nil, errors.New("boom")
 		}))
 
-		if got := fetchPricesPage(context.Background(), client, 10, rateLimiter); got {
-			t.Fatal("expected false when prices request fails")
+		if got := fetchPricesPage(context.Background(), client, 10, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when prices request fails, got %v", got)
 		}
 		if len(globalRetryQueue.requests) != 1 {
 			t.Fatalf("expected one queued retry, got %d", len(globalRetryQueue.requests))
@@ -282,12 +282,12 @@ func TestFetchStationsPageStatusAndQueueBehavior(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
-		want       bool
+		want       pageFetchResult
 		wantQueued bool
 	}{
-		{name: "not found is last page", statusCode: http.StatusNotFound, want: true, wantQueued: false},
-		{name: "server error queued retry", statusCode: http.StatusInternalServerError, want: false, wantQueued: true},
-		{name: "bad request is terminal", statusCode: http.StatusBadRequest, want: true, wantQueued: false},
+		{name: "not found is last page", statusCode: http.StatusNotFound, want: pageFetchFinalPage, wantQueued: false},
+		{name: "server error queued retry", statusCode: http.StatusInternalServerError, want: pageFetchContinue, wantQueued: true},
+		{name: "bad request aborts cycle", statusCode: http.StatusBadRequest, want: pageFetchAbortCycle, wantQueued: false},
 	}
 
 	for _, tt := range tests {
@@ -327,8 +327,8 @@ func TestFetchStationsPageBodyAndNodeIDBehavior(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: failingReadCloser{}, Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchStationsPage(context.Background(), client, 1, rateLimiter); got {
-			t.Fatal("expected false when body read fails")
+		if got := fetchStationsPage(context.Background(), client, 1, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when body read fails, got %v", got)
 		}
 		if len(globalRetryQueue.requests) != 1 {
 			t.Fatalf("expected one queued retry, got %d", len(globalRetryQueue.requests))
@@ -340,8 +340,8 @@ func TestFetchStationsPageBodyAndNodeIDBehavior(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}")), Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchStationsPage(context.Background(), client, 2, rateLimiter); !got {
-			t.Fatal("expected true when page contains no node_id")
+		if got := fetchStationsPage(context.Background(), client, 2, rateLimiter); got != pageFetchFinalPage {
+			t.Fatalf("expected final page when page contains no node_id, got %v", got)
 		}
 	})
 
@@ -351,8 +351,8 @@ func TestFetchStationsPageBodyAndNodeIDBehavior(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(highCountBody)), Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchStationsPage(context.Background(), client, 4, rateLimiter); got {
-			t.Fatal("expected false when node_id count meets threshold")
+		if got := fetchStationsPage(context.Background(), client, 4, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when node_id count meets threshold, got %v", got)
 		}
 	})
 }
@@ -369,12 +369,12 @@ func TestFetchPricesPageStatusAndBodyBehavior(t *testing.T) {
 	t.Run("status handling mirrors stations", func(t *testing.T) {
 		cases := []struct {
 			statusCode int
-			want       bool
+			want       pageFetchResult
 			wantQueued bool
 		}{
-			{http.StatusNotFound, true, false},
-			{http.StatusTooManyRequests, false, true},
-			{http.StatusBadRequest, true, false},
+			{http.StatusNotFound, pageFetchFinalPage, false},
+			{http.StatusTooManyRequests, pageFetchContinue, true},
+			{http.StatusBadRequest, pageFetchAbortCycle, false},
 		}
 
 		for _, tc := range cases {
@@ -399,8 +399,8 @@ func TestFetchPricesPageStatusAndBodyBehavior(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: failingReadCloser{}, Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchPricesPage(context.Background(), client, 7, rateLimiter); got {
-			t.Fatal("expected false when body read fails")
+		if got := fetchPricesPage(context.Background(), client, 7, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when body read fails, got %v", got)
 		}
 		if len(globalRetryQueue.requests) != 1 {
 			t.Fatalf("expected one queued retry, got %d", len(globalRetryQueue.requests))
@@ -413,8 +413,8 @@ func TestFetchPricesPageStatusAndBodyBehavior(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(highCountBody)), Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchPricesPage(context.Background(), client, 8, rateLimiter); got {
-			t.Fatal("expected false when node_id count meets threshold")
+		if got := fetchPricesPage(context.Background(), client, 8, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when node_id count meets threshold, got %v", got)
 		}
 	})
 }
