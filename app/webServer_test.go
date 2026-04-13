@@ -137,8 +137,12 @@ func TestSetupWebServer(t *testing.T) {
 
 	tempDir := withTempWorkingDir(t)
 	staticDir := filepath.Join(tempDir, "static")
+	imgDir := filepath.Join(tempDir, "img")
 	if err := os.MkdirAll(staticDir, 0o755); err != nil {
 		t.Fatalf("mkdir static dir: %v", err)
+	}
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		t.Fatalf("mkdir img dir: %v", err)
 	}
 	files := map[string]string{
 		"index.html":  "<html>index</html>",
@@ -150,6 +154,20 @@ func TestSetupWebServer(t *testing.T) {
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(staticDir, name), []byte(content), 0o600); err != nil {
 			t.Fatalf("write static file %s: %v", name, err)
+		}
+	}
+	imgFiles := map[string]string{
+		"favicon-16x16.png":            "png",
+		"favicon-32x32.png":            "png",
+		"favicon-48x48.png":            "png",
+		"apple-touch-icon-180x180.png": "png",
+		"apple-touch-icon.png":         "png",
+		"android-chrome-192x192.png":   "png",
+		"android-chrome-512x512.png":   "png",
+	}
+	for name, content := range imgFiles {
+		if err := os.WriteFile(filepath.Join(imgDir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write img file %s: %v", name, err)
 		}
 	}
 
@@ -205,6 +223,21 @@ func TestSetupWebServer(t *testing.T) {
 	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/preview.png", nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 from png asset route, got %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/img/favicon-32x32.png", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from img asset route, got %d", w.Code)
+	}
+	if !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+		t.Fatalf("expected immutable cache headers on img asset route, got %q", w.Header().Get("Cache-Control"))
+	}
+
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/img/not-served.png", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 from unknown img asset route, got %d", w.Code)
 	}
 
 	w = httptest.NewRecorder()

@@ -65,6 +65,12 @@ func cacheAssets(next http.Handler) http.Handler {
 	})
 }
 
+func serveCachedFile(filePath string) http.Handler {
+	return cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filePath)
+	}))
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -100,17 +106,20 @@ func setupWebServer() *http.Server {
 	mux.HandleFunc("/", rootHandler)
 
 	// /main.css and /main.js are the new paths for the built assets, so we can serve them directly from the static directory with caching
-	mux.Handle("/main.css", cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/main.css")
-	})))
-	mux.Handle("/main.js", cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/main.js")
-	})))
+	mux.Handle("/main.css", serveCachedFile("static/main.css"))
+	mux.Handle("/main.js", serveCachedFile("static/main.js"))
 
 	// /preview.png is the new path for the social media preview image, so we can serve it directly from the static directory with caching
-	mux.Handle("/preview.png", cacheAssets(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/preview.png")
-	})))
+	mux.Handle("/preview.png", serveCachedFile("static/preview.png"))
+
+	// Serve only the known favicon and touch icon assets individually.
+	mux.Handle("/img/favicon-16x16.png", serveCachedFile("img/favicon-16x16.png"))
+	mux.Handle("/img/favicon-32x32.png", serveCachedFile("img/favicon-32x32.png"))
+	mux.Handle("/img/favicon-48x48.png", serveCachedFile("img/favicon-48x48.png"))
+	mux.Handle("/img/apple-touch-icon-180x180.png", serveCachedFile("img/apple-touch-icon-180x180.png"))
+	mux.Handle("/img/apple-touch-icon.png", serveCachedFile("img/apple-touch-icon.png"))
+	mux.Handle("/img/android-chrome-192x192.png", serveCachedFile("img/android-chrome-192x192.png"))
+	mux.Handle("/img/android-chrome-512x512.png", serveCachedFile("img/android-chrome-512x512.png"))
 
 	return &http.Server{
 		Addr:           "0.0.0.0:8080",
