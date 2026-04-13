@@ -162,3 +162,25 @@ func TestLoadDataFromJSONFiles(t *testing.T) {
 		t.Fatalf("expected 2 price stations loaded, got %d", priceCount)
 	}
 }
+
+func TestLoadDataFromJSONFilesMissingDirectory(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+	withTempWorkingDir(t)
+
+	loadDataFromJSONFiles()
+
+	savedStationsPagesMutex.Lock()
+	stationPages := len(savedStationsPages)
+	savedStationsPagesMutex.Unlock()
+	if stationPages != 0 {
+		t.Fatalf("expected no cached station pages, got %d", stationPages)
+	}
+
+	savedPricesPagesMutex.Lock()
+	pricePages := len(savedPricesPages)
+	savedPricesPagesMutex.Unlock()
+	if pricePages != 0 {
+		t.Fatalf("expected no cached price pages, got %d", pricePages)
+	}
+}
