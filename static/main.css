@@ -189,6 +189,7 @@ body.info-closed #info {
     margin: 0 5px 8px 0;
     color: var(--link);
     font-size: 16px;
+    padding-right: 44px;
 }
 
 .info-window p {
@@ -221,12 +222,14 @@ body.info-closed #info {
 
 .gm-style-iw-chr {
     height: 0px;
+    background: transparent !important;
 }
 
 .gm-style .gm-style-iw-c {
     background: var(--panel-bg) !important;
     color: var(--text) !important;
     border: 1px solid var(--panel-border);
+    padding-inline-end: 0 !important;
 }
 
 .gm-style .gm-style-iw {
