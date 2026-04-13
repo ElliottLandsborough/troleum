@@ -81,8 +81,9 @@
     <script>
         const defaultMapsApiKey = 'AIzaSyBZBhqOIrxogvyAYko5uFbl7kH9nR28HS0'; // limited to server ip address
         const localMapsApiKey = 'AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ'; // limited to wan ip address
+        const normalizedHostname = window.location.hostname.replace(/\.$/, '');
         const isLocal127 = window.location.protocol === 'http:' &&
-            window.location.hostname === '127.0.0.1' &&
+            normalizedHostname === '127.0.0.1' &&
             window.location.port === '8080';
 
         const mapsApiKey = isLocal127 ? localMapsApiKey : defaultMapsApiKey;

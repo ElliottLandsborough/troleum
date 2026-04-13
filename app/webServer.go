@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -83,6 +84,59 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+func requestScheme(r *http.Request) string {
+	if forwardedProto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwardedProto != "" {
+		parts := strings.Split(forwardedProto, ",")
+		if len(parts) > 0 {
+			proto := strings.TrimSpace(parts[0])
+			if proto != "" {
+				return proto
+			}
+		}
+	}
+
+	if r.TLS != nil {
+		return "https"
+	}
+
+	return "http"
+}
+
+func canonicalizeHost(host string) string {
+	hostname := host
+	port := ""
+
+	parsedHost, parsedPort, err := net.SplitHostPort(host)
+	if err == nil {
+		hostname = parsedHost
+		port = parsedPort
+	}
+
+	trimmedHostname := strings.TrimSuffix(hostname, ".")
+	if trimmedHostname == hostname {
+		return host
+	}
+
+	if port == "" {
+		return trimmedHostname
+	}
+
+	return net.JoinHostPort(trimmedHostname, port)
+}
+
+func canonicalHostRedirect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		canonicalHost := canonicalizeHost(r.Host)
+		if canonicalHost == r.Host {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		target := requestScheme(r) + "://" + canonicalHost + r.URL.RequestURI()
+		http.Redirect(w, r, target, http.StatusPermanentRedirect)
+	})
+}
+
 func setupWebServer() *http.Server {
 	mux := http.NewServeMux()
 
@@ -124,7 +178,7 @@ func setupWebServer() *http.Server {
 
 	return &http.Server{
 		Addr:           "0.0.0.0:8080",
-		Handler:        securityHeaders(mux),
+		Handler:        securityHeaders(canonicalHostRedirect(mux)),
 		MaxHeaderBytes: 1 << 20,          // 1MB max for request headers (URL + all headers combined)
 		ReadTimeout:    15 * time.Second, // Prevent slowloris attacks
 		WriteTimeout:   15 * time.Second, // Prevent slow client writes

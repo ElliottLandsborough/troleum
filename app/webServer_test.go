@@ -85,6 +85,62 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "no trailing dot", host: "troleum.org", want: "troleum.org"},
+		{name: "trailing dot", host: "troleum.org.", want: "troleum.org"},
+		{name: "trailing dot with port", host: "troleum.org.:8080", want: "troleum.org:8080"},
+		{name: "ipv4 trailing dot", host: "127.0.0.1.", want: "127.0.0.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := canonicalizeHost(tt.host)
+			if got != tt.want {
+				t.Fatalf("canonicalizeHost(%q) = %q, want %q", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCanonicalHostRedirectMiddleware(t *testing.T) {
+	h := canonicalHostRedirect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	t.Run("redirects trailing dot host", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://troleum.org./path?q=1", nil)
+		req.Host = "troleum.org."
+		req.Header.Set("X-Forwarded-Proto", "https")
+		w := httptest.NewRecorder()
+
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusPermanentRedirect {
+			t.Fatalf("expected %d, got %d", http.StatusPermanentRedirect, w.Code)
+		}
+		if got := w.Header().Get("Location"); got != "https://troleum.org/path?q=1" {
+			t.Fatalf("expected canonical location, got %q", got)
+		}
+	})
+
+	t.Run("passes through canonical host", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://troleum.org/path", nil)
+		req.Host = "troleum.org"
+		w := httptest.NewRecorder()
+
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected %d, got %d", http.StatusNoContent, w.Code)
+		}
+	})
+}
+
 func TestRootHandlerAndServeNotFoundPage(t *testing.T) {
 	tempDir := withTempWorkingDir(t)
 	staticDir := filepath.Join(tempDir, "static")
@@ -254,6 +310,18 @@ func TestSetupWebServer(t *testing.T) {
 	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 from fallback route, got %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/main.css?v=1", nil)
+	req.Host = "troleum.org."
+	req.Header.Set("X-Forwarded-Proto", "https")
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusPermanentRedirect {
+		t.Fatalf("expected %d for trailing-dot host redirect, got %d", http.StatusPermanentRedirect, w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "https://troleum.org/main.css?v=1" {
+		t.Fatalf("expected canonical redirect location, got %q", got)
 	}
 }
 
