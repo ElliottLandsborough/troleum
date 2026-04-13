@@ -976,7 +976,7 @@ function initMap() {
     // Create bounds to fit all markers
     //const bounds = new google.maps.LatLngBounds();
 
-    map.addListener('idle', () => {
+    function requestStationsForCurrentView() {
         clearTimeout(debounceTimer);
 
         const url = new URL('/api/stations', window.location.origin);
@@ -986,7 +986,15 @@ function initMap() {
             url.searchParams.set('lng', userLng);
         }
 
+        const selectedFuelType = getSelectedFuelSortValue();
+        if (selectedFuelType) {
+            url.searchParams.set('fuel_type', selectedFuelType);
+        }
+
         const bounds = map.getBounds();
+        if (!bounds) {
+            return;
+        }
         const ne = bounds.getNorthEast();
         const sw = bounds.getSouthWest();
 
@@ -1008,16 +1016,15 @@ function initMap() {
                 console.error(err);
             }
         }, 200);
-    });
+    }
+
+    map.addListener('idle', requestStationsForCurrentView);
 
     const input = document.getElementById('location-input');
     const sortSelect = document.getElementById('sort-options');
 
     sortSelect.addEventListener('change', () => {
-        if (latestPins) {
-            renderPins(latestPins);
-            renderStationInfo(latestPins);
-        }
+        requestStationsForCurrentView();
     });
 
     const autocomplete = new google.maps.places.Autocomplete(input);
