@@ -34,6 +34,9 @@ var (
 	lastStationsCycleComplete time.Time
 	lastPricesCycleComplete   time.Time
 	cycleTimeMutex            sync.RWMutex
+	retryWorkerTickAfter      = time.After
+	retryStationsProcessor    = retryFetchStationsPage
+	retryPricesProcessor      = retryFetchPricesPage
 )
 
 func (rq *RetryQueue) AddRequest(pageNum int, isStations bool) {
@@ -93,7 +96,7 @@ func retryWorker(ctx context.Context, client *OAuthClient, rateLimiter *time.Tic
 		case <-ctx.Done():
 			log.Println("[RETRY] Shutdown requested, stopping retry worker")
 			return
-		case <-time.After(30 * time.Second):
+		case <-retryWorkerTickAfter(30 * time.Second):
 		}
 
 		if !globalRetryQueue.HasRequests() {
@@ -154,9 +157,9 @@ func retryWorker(ctx context.Context, client *OAuthClient, rateLimiter *time.Tic
 
 		var success bool
 		if req.IsStations {
-			success = retryFetchStationsPage(client, req.PageNum)
+			success = retryStationsProcessor(client, req.PageNum)
 		} else {
-			success = retryFetchPricesPage(client, req.PageNum)
+			success = retryPricesProcessor(client, req.PageNum)
 		}
 
 		if !success {

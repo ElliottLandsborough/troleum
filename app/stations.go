@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+var stationsCycleWait = time.After
+var fetchStationsPageForCycle = fetchStationsPage
+
 type Station struct {
 	NodeID                      string       `json:"node_id"`
 	MftOrganisationName         string       `json:"mft_organisation_name"`
@@ -94,7 +97,7 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 					case <-ctx.Done():
 						log.Println("[STATIONS] Shutdown requested, stopping fetch worker")
 						return
-					case <-time.After(waitTime):
+					case <-stationsCycleWait(waitTime):
 					}
 					continue
 				}
@@ -104,7 +107,7 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 			log.Println("[STATIONS] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchStationsPage(ctx, client, currentPage, rateLimiter)
+		isLastPage := fetchStationsPageForCycle(ctx, client, currentPage, rateLimiter)
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)

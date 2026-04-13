@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+var pricesCycleWait = time.After
+var fetchPricesPageForCycle = fetchPricesPage
+
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint
 type FuelPrice struct {
 	FuelType         string    `json:"fuel_type"`
@@ -168,7 +171,7 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 					case <-ctx.Done():
 						log.Println("[PRICES] Shutdown requested, stopping fetch worker")
 						return
-					case <-time.After(waitTime):
+					case <-pricesCycleWait(waitTime):
 					}
 					continue
 				}
@@ -178,7 +181,7 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 			log.Println("[PRICES] Starting new cycle from page 1")
 		}
 
-		isLastPage := fetchPricesPage(ctx, client, currentPage, rateLimiter)
+		isLastPage := fetchPricesPageForCycle(ctx, client, currentPage, rateLimiter)
 
 		if isLastPage {
 			cycleDuration := time.Since(cycleStartTime)

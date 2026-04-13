@@ -102,3 +102,103 @@ func TestContinuousFetchPricesStopsWhenContextCanceled(t *testing.T) {
 
 	continuousFetchPrices(ctx, nil, rateLimiter)
 }
+
+func TestContinuousFetchPricesSkipsWithinLimit(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	calledFetch := false
+
+	lastPricesCycleComplete = time.Now()
+	pricesCycleWait = func(time.Duration) <-chan time.Time {
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+	fetchPricesPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+		calledFetch = true
+		return true
+	}
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	continuousFetchPrices(ctx, nil, rateLimiter)
+	if calledFetch {
+		t.Fatal("expected fetch not to run when cycle is skipped")
+	}
+}
+
+func TestContinuousFetchPricesPageProgression(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastPricesCycleComplete = time.Time{}
+
+	seenPages := make([]int, 0, 2)
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) bool {
+		seenPages = append(seenPages, page)
+		if len(seenPages) == 1 {
+			return false
+		}
+		cancel()
+		return true
+	}
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	continuousFetchPrices(ctx, nil, rateLimiter)
+
+	if len(seenPages) != 2 || seenPages[0] != 1 || seenPages[1] != 2 {
+		t.Fatalf("expected pages [1 2], got %v", seenPages)
+	}
+}
+
+func TestContinuousFetchPricesCancelDuringSkipWait(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	calledFetch := false
+	lastPricesCycleComplete = time.Now()
+
+	pricesCycleWait = func(time.Duration) <-chan time.Time {
+		return make(chan time.Time)
+	}
+	fetchPricesPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+		calledFetch = true
+		return true
+	}
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	go cancel()
+	continuousFetchPrices(ctx, nil, rateLimiter)
+
+	if calledFetch {
+		t.Fatal("expected no fetch when context canceled during skip wait")
+	}
+}

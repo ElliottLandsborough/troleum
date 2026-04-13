@@ -43,3 +43,103 @@ func TestContinuousFetchStationsStopsWhenContextCanceled(t *testing.T) {
 
 	continuousFetchStations(ctx, nil, rateLimiter)
 }
+
+func TestContinuousFetchStationsSkipsWithinHourlyLimit(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	calledFetch := false
+
+	lastStationsCycleComplete = time.Now()
+	stationsCycleWait = func(time.Duration) <-chan time.Time {
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+	fetchStationsPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+		calledFetch = true
+		return true
+	}
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	continuousFetchStations(ctx, nil, rateLimiter)
+	if calledFetch {
+		t.Fatal("expected fetch not to run when cycle is skipped")
+	}
+}
+
+func TestContinuousFetchStationsPageProgression(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastStationsCycleComplete = time.Time{}
+
+	seenPages := make([]int, 0, 2)
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) bool {
+		seenPages = append(seenPages, page)
+		if len(seenPages) == 1 {
+			return false
+		}
+		cancel()
+		return true
+	}
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	continuousFetchStations(ctx, nil, rateLimiter)
+
+	if len(seenPages) != 2 || seenPages[0] != 1 || seenPages[1] != 2 {
+		t.Fatalf("expected pages [1 2], got %v", seenPages)
+	}
+}
+
+func TestContinuousFetchStationsCancelDuringSkipWait(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	calledFetch := false
+	lastStationsCycleComplete = time.Now()
+
+	stationsCycleWait = func(time.Duration) <-chan time.Time {
+		return make(chan time.Time)
+	}
+	fetchStationsPageForCycle = func(context.Context, *OAuthClient, int, *time.Ticker) bool {
+		calledFetch = true
+		return true
+	}
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	go cancel()
+	continuousFetchStations(ctx, nil, rateLimiter)
+
+	if calledFetch {
+		t.Fatal("expected no fetch when context canceled during skip wait")
+	}
+}

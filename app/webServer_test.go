@@ -91,6 +91,17 @@ func TestRootHandlerAndServeNotFoundPage(t *testing.T) {
 	}
 }
 
+func TestServeNotFoundPageFallsBackToHTTPNotFoundWhenFileMissing(t *testing.T) {
+	withTempWorkingDir(t)
+
+	w := httptest.NewRecorder()
+	serveNotFoundPage(w, httptest.NewRequest(http.MethodGet, "/anything", nil))
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected fallback 404, got %d", w.Code)
+	}
+}
+
 func TestSetupWebServer(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)
