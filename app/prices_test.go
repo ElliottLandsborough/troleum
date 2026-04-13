@@ -268,14 +268,18 @@ func TestContinuousFetchPricesEndsCycleAfterConsecutiveSkippedPages(t *testing.T
 
 	ctx, cancel := context.WithCancel(context.Background())
 	lastPricesCycleComplete = time.Time{}
+	waitCalled := false
+	pricesCycleWait = func(time.Duration) <-chan time.Time {
+		waitCalled = true
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
 
-	seenPages := make([]int, 0, 5)
+	seenPages := make([]int, 0, 4)
 	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
 		seenPages = append(seenPages, page)
-		if len(seenPages) == 5 {
-			cancel()
-			return pageFetchFinalPage
-		}
 		return pageFetchSkipPage
 	}
 
@@ -284,10 +288,13 @@ func TestContinuousFetchPricesEndsCycleAfterConsecutiveSkippedPages(t *testing.T
 
 	continuousFetchPrices(ctx, nil, r)
 
-	if len(seenPages) != 5 {
-		t.Fatalf("expected 5 page fetch attempts, got %v", seenPages)
+	if len(seenPages) != 3 {
+		t.Fatalf("expected 3 page fetch attempts before cycle reset, got %v", seenPages)
 	}
-	if seenPages[0] != 1 || seenPages[1] != 2 || seenPages[2] != 3 || seenPages[3] != 1 {
-		t.Fatalf("expected cycle reset after consecutive skips, got %v", seenPages)
+	if seenPages[0] != 1 || seenPages[1] != 2 || seenPages[2] != 3 {
+		t.Fatalf("expected skipped pages [1 2 3] before reset, got %v", seenPages)
+	}
+	if !waitCalled {
+		t.Fatal("expected cycle wait to be invoked after reset")
 	}
 }
