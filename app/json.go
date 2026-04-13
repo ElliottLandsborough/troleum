@@ -15,16 +15,14 @@ import (
 func writeJSONPretty(w http.ResponseWriter, data interface{}) error {
 	w.Header().Set("Content-Type", "application/json")
 
+	marshal := json.Marshal
 	if debug {
-		jsonData, err := json.MarshalIndent(data, "", "  ")
-		if err != nil {
-			return err
+		marshal = func(v interface{}) ([]byte, error) {
+			return json.MarshalIndent(v, "", "  ")
 		}
-		_, err = w.Write(jsonData)
-		return err
 	}
 
-	jsonData, err := json.Marshal(data)
+	jsonData, err := marshal(data)
 	if err != nil {
 		return err
 	}
