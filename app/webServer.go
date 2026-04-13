@@ -57,16 +57,8 @@ func cacheAssets(next http.Handler) http.Handler {
 			w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		case ".js":
 			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		case ".svg":
-			w.Header().Set("Content-Type", "image/svg+xml")
 		case ".png":
 			w.Header().Set("Content-Type", "image/png")
-		case ".jpg", ".jpeg":
-			w.Header().Set("Content-Type", "image/jpeg")
-		case ".gif":
-			w.Header().Set("Content-Type", "image/gif")
-		case ".webp":
-			w.Header().Set("Content-Type", "image/webp")
 		}
 
 		next.ServeHTTP(w, r)
