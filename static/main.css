@@ -6,8 +6,8 @@
 
 :root {
     color-scheme: light dark;
-    --bg: #ffffff;
-    --panel-bg: #ffffff;
+    --bg: #f6f8fb;
+    --panel-bg: #fbfcff;
     --panel-border: #cccccc;
     --muted-border: #eeeeee;
     --text: #111111;
@@ -18,7 +18,7 @@
     --card-bg: #fafafa;
     --selected-bg: #ffe2b8;
     --selected-border: #f39c12;
-    --control-bg: #ffffff;
+    --control-bg: #fbfcff;
     --control-border: #d6d6d6;
     --spinner: #111111;
 }
