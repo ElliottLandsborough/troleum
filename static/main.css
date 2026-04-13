@@ -286,13 +286,9 @@ body.info-closed #info {
 .top-nav #location-input {
     height: 64px;
     width: calc(100% - 64px);
-    font-size: 20px;
-    line-height: 64px;
-    padding: 20px;
     float: left;
     background: var(--control-bg);
     color: var(--text);
-    border: 1px solid var(--control-border);
 }
 
 .top-nav #menu-toggle {
