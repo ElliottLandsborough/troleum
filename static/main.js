@@ -644,18 +644,7 @@ function removeMarker(marker) {
 
 function addMarkerClickListener(marker, handler) {
     if (marker?.__isAdvancedMarker && typeof marker.addEventListener === 'function') {
-        let lastClickAt = 0;
-        const dedupedHandler = function(event) {
-            const now = Date.now();
-            if (now-lastClickAt < 75) {
-                return;
-            }
-            lastClickAt = now;
-            handler(event);
-        };
-
-        marker.addEventListener('gmp-click', dedupedHandler);
-        marker.addEventListener('click', dedupedHandler);
+        marker.addEventListener('gmp-click', handler);
         return;
     }
 
