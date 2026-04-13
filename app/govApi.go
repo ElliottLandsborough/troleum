@@ -221,7 +221,7 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 
 	StoreJSONPageInMemory(pageNum, bodyString, RequestTypeStationsPage, nodeIdCount)
 
-	// Save the page to JSON file (for debug purposes, not used for enrichment)
+	// Save the page to JSON so startup can reload cached responses into memory.
 	filePath, err := savePageJSON(bodyString, pageNum, "stations")
 	if err != nil {
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
@@ -305,9 +305,7 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 
 	StoreJSONPageInMemory(pageNum, bodyString, RequestTypePricesPage, nodeIdCount)
 
-	// Save the page to JSON file
-
-	// If we cached the price 5 minutes ago anyway, skip the cache refresh, worst case we lose 5mins of data
+	// Save the page to JSON so startup can reload cached responses into memory.
 	filePath, err := savePageJSON(bodyString, pageNum, "prices")
 	if err != nil {
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)

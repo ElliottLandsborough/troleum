@@ -101,7 +101,7 @@ func triggerEnrichmentWithReset() {
 		return
 	}
 	loadDataFromAllCachedPageResponses()
-	// Next enrichment will run 600 seconds (10 minutes) after the last one finishes
+	// Next enrichment runs one enrichmentInterval after the last run finishes,
 	// regardless of if you manually execute it or if the timer executes it.
 	resetEnrichmentTimerLocked(enrichmentInterval)
 }

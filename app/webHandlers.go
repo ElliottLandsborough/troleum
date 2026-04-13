@@ -28,7 +28,7 @@ const (
 	MaxLongitude = 180.0
 )
 
-// a map response will have a key of code (int), a key of message (string) and a key of data (interface{})
+// APIResponse is the common JSON envelope for API responses.
 type APIResponse struct {
 	Code int `json:"code"`
 	//Message string      `json:"message"`
@@ -238,18 +238,18 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No location provided, returning stations in original order")
 	}
 
-	// if there are more than 100 stations to be returned, select 100 random stations
+	// If there are more than 100 stations to be returned, limit the response to 100 stations.
 	if len(stationsToBeReturned) > 100 {
 		if bboxProvided {
 			log.Printf("More than 100 stations in bbox (%d), selecting 100 stations with spatial spread and cheaper-price preference", len(stationsToBeReturned))
 			stationsToBeReturned = selectStationsForBoundingBox(stationsToBeReturned, 100, minLat, minLng, maxLat, maxLng)
 		} else {
-			log.Printf("More than 100 stations to be returned (%d), selecting 100 random stations", len(stationsToBeReturned))
+			log.Printf("More than 100 stations to be returned (%d), selecting the first 100 stations", len(stationsToBeReturned))
 			stationsToBeReturned = selectFirstStations(stationsToBeReturned, 100)
 		}
 	}
 
-	// generate an API response with code 200, message "Success", and the stations data, and write it as pretty JSON to the response
+	// Generate an API response with code 200 and the stations data.
 	response := APIResponse{
 		Code: 200,
 		//Message: "success",

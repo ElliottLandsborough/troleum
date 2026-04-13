@@ -72,14 +72,14 @@ func setupWebServer() *http.Server {
 	// API routes (no caching)
 	// ----------------------
 
-	// get all stations, with pagination, from memory
-	// ?page = 1,2,3... (default 1)
-	// ?per_page = 1,2,3... (default 20)
-	// ?location = lat,lng (optional, if provided, will return stations sorted by distance to this location)
-	// ?fuel_type = e5,e10,diesel (optional, if provided, will filter stations by fuel type)
+	// Get stations from memory.
+	// Supported query params:
+	// ?lat=...&lng=... sorts stations by distance to that location.
+	// ?bbox=minLat,minLng,maxLat,maxLng filters stations to a bounding box.
+	// ?fuel_type=E10 applies an exact fuel-type filter.
 	mux.Handle("/api/stations", noStore(http.HandlerFunc(stationsAPIHandler)))
 
-	// get all fuelTypesCache
+	// Get the current cached fuel type list.
 	mux.Handle("/api/fuel-types", noStore(http.HandlerFunc(fuelTypesAPIHandler)))
 
 	// ----------------------

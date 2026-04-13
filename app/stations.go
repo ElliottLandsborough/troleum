@@ -27,7 +27,7 @@ type Station struct {
 	Amenities                   []string     `json:"amenities"`
 	OpeningTimes                OpeningTimes `json:"opening_times"`
 	FuelTypes                   []string     `json:"fuel_types"`
-	Distance                    float64      `json:"distance,omitempty"` // Distance in km from a given location, calculated on the fly
+	Distance                    float64      `json:"distance,omitempty"` // Distance in miles from a given location, calculated on the fly
 }
 
 type Location struct {
