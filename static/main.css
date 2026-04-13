@@ -181,6 +181,8 @@ body.info-closed #info {
 .info-window {
     padding: 10px;
     max-width: 200px;
+    background: var(--panel-bg);
+    color: var(--text);
 }
 
 .info-window h3 {
@@ -219,6 +221,59 @@ body.info-closed #info {
 
 .gm-style-iw-chr {
     height: 0px;
+}
+
+.gm-style .gm-style-iw-c {
+    background: var(--panel-bg) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--panel-border);
+}
+
+.gm-style .gm-style-iw {
+    background: var(--panel-bg) !important;
+    color: var(--text) !important;
+}
+
+.gm-style .gm-style-iw-d {
+    background: var(--panel-bg) !important;
+    color: var(--text) !important;
+    overflow: auto !important;
+    scrollbar-color: var(--control-border) var(--panel-bg);
+    scrollbar-width: thin;
+}
+
+.gm-style .gm-style-iw-d > div {
+    background: var(--panel-bg) !important;
+}
+
+.gm-style .gm-style-iw-d::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.gm-style .gm-style-iw-d::-webkit-scrollbar-track {
+    background: var(--panel-bg);
+}
+
+.gm-style .gm-style-iw-d::-webkit-scrollbar-thumb {
+    background: var(--control-border);
+    border-radius: 8px;
+    border: 2px solid var(--panel-bg);
+}
+
+.gm-style .gm-style-iw-tc {
+    background: transparent !important;
+}
+
+.gm-style .gm-style-iw-t::after {
+    background: var(--panel-bg) !important;
+}
+
+.gm-style .gm-style-iw-c,
+.gm-style .gm-style-iw-d,
+.gm-style .gm-style-iw,
+.gm-style .gm-style-iw-t::after {
+    box-shadow: none !important;
 }
 
 .top-nav {
