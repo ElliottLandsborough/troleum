@@ -308,11 +308,11 @@ function createMapMarkerContent(pinOptions = {}) {
     return pin || null;
 }
 
-function createMapMarker({ map, position, title, zIndex, pinOptions, legacyOptions = {} }) {
+function createMapMarker({ map, position, title, zIndex, pinOptions, legacyOptions = {}, preferLegacy = false }) {
     const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement || google.maps.AdvancedMarkerElement;
     const markerContent = createMapMarkerContent(pinOptions);
 
-    if (typeof AdvancedMarkerElement === 'function' && (!pinOptions || markerContent)) {
+    if (!preferLegacy && typeof AdvancedMarkerElement === 'function' && (!pinOptions || markerContent)) {
         const marker = new AdvancedMarkerElement({
             map,
             position,
@@ -1164,6 +1164,14 @@ function initMap() {
 
     sortSelect.addEventListener('change', () => {
         persistSortOptionPreference(sortSelect.value || 'distance');
+
+        // Re-render immediately from cached pins so marker categories update even
+        // if the network request is slow or aborted.
+        if (latestPins) {
+            renderPins(latestPins);
+            renderStationInfo(latestPins);
+        }
+
         requestStationsForCurrentView();
     });
 
@@ -1308,6 +1316,7 @@ function renderPins(pins) {
             position: { lat: pin.lat, lng: pin.lng },
             map,
             title: pin.name,
+            preferLegacy: false,
             pinOptions: {
                 scale: 1,
                 background: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
