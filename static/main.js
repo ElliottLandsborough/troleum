@@ -757,7 +757,7 @@ function applyPendingFollowMeLocation(lat, lng) {
 
     pendingFollowMeLocationRequest = false;
     map.setCenter({ lat, lng });
-    map.setZoom(14);
+    map.setZoom(13);
     populateFollowMeLocationInput(lat, lng);
 }
 
@@ -1430,7 +1430,7 @@ function initMap() {
 
         // Center map on the selected marker itself.
         map.setCenter({ lat, lng });
-        map.setZoom(14);
+        map.setZoom(13);
     });
 
     centerMapOnUserLocation();
