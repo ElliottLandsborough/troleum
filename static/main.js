@@ -213,28 +213,18 @@ function createMapInstance(viewState = null) {
     }
 }
 
-function buildLocationMarkerOptions(position, title, zIndex, color, preferLegacy = false) {
+function buildLocationMarkerOptions(position, title, zIndex, color, markerShape = 'pin') {
     return {
         position,
         map,
         title,
         zIndex,
-        preferLegacy,
+        markerShape,
         pinOptions: {
             scale: 0.8,
             background: color,
             borderColor: '#ffffff',
             glyphColor: color,
-        },
-        legacyOptions: {
-            icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8,
-                fillColor: color,
-                fillOpacity: 1,
-                strokeColor: '#ffffff',
-                strokeWeight: 2,
-            },
         },
     };
 }
@@ -288,8 +278,8 @@ function rebuildMapForThemeChange() {
                 { lat, lng },
                 'Search Location',
                 999999,
-                    MARKER_COLOR_DEFAULT,
-                    true,
+                MARKER_COLOR_DEFAULT,
+                'pin',
             ));
             markersById.set('search-location', rebuiltSearchMarker);
 
@@ -311,7 +301,7 @@ function rebuildMapForThemeChange() {
             'Your Location',
             USER_MARKER_Z_INDEX,
             MARKER_COLOR_DEFAULT,
-            true,
+            'circle',
         ));
         markersById.set('user-location', rebuiltUserMarker);
 
@@ -558,42 +548,47 @@ function createMapMarkerContent(pinOptions = {}) {
     return pin || null;
 }
 
-function createMapMarker({ map, position, title, zIndex, pinOptions, legacyOptions = {}, preferLegacy = false }) {
+function createCircleMarkerContent(color, size = 16) {
+    const markerEl = document.createElement('div');
+    markerEl.style.width = `${size}px`;
+    markerEl.style.height = `${size}px`;
+    markerEl.style.borderRadius = '50%';
+    markerEl.style.backgroundColor = color;
+    markerEl.style.border = '2px solid #ffffff';
+    markerEl.style.boxSizing = 'border-box';
+    markerEl.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.08)';
+    return markerEl;
+}
+
+function createMapMarker({ map, position, title, zIndex, pinOptions, markerShape = 'pin' }) {
     const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement || google.maps.AdvancedMarkerElement;
-    const markerContent = createMapMarkerContent(pinOptions);
-    const canUseAdvancedMarkers = Boolean(GOOGLE_MAPS_MAP_ID);
-
-    if (canUseAdvancedMarkers && !preferLegacy && typeof AdvancedMarkerElement === 'function' && (!pinOptions || markerContent)) {
-        const marker = new AdvancedMarkerElement({
-            map,
-            position,
-            title,
-            zIndex,
-            gmpClickable: true,
-            content: markerContent,
-        });
-
-        marker.__isAdvancedMarker = true;
-        marker.__defaultMap = map;
-        return marker;
+    if (typeof AdvancedMarkerElement !== 'function') {
+        throw new Error('AdvancedMarkerElement is unavailable; ensure the marker library is loaded.');
     }
 
-    return new google.maps.Marker({
+    const markerContent = markerShape === 'circle'
+        ? createCircleMarkerContent(pinOptions?.background || MARKER_COLOR_DEFAULT)
+        : createMapMarkerContent(pinOptions);
+
+    const marker = new AdvancedMarkerElement({
         map,
         position,
         title,
         zIndex,
-        ...legacyOptions,
+        gmpClickable: true,
+        content: markerContent,
     });
+
+    marker.__isAdvancedMarker = true;
+    marker.__defaultMap = map;
+    marker.__markerShape = markerShape;
+    return marker;
 }
 
 function setMarkerPosition(marker, position) {
     if (marker?.__isAdvancedMarker) {
         marker.position = position;
-        return;
     }
-
-    marker?.setPosition(position);
 }
 
 function getMarkerPosition(marker) {
@@ -601,34 +596,25 @@ function getMarkerPosition(marker) {
         return marker.position;
     }
 
-    return marker?.getPosition();
+    return null;
 }
 
 function setMarkerTitle(marker, title) {
     if (marker?.__isAdvancedMarker) {
         marker.title = title;
-        return;
     }
-
-    marker?.setTitle(title);
 }
 
 function setMarkerZIndex(marker, zIndex) {
     if (marker?.__isAdvancedMarker) {
         marker.zIndex = zIndex;
-        return;
     }
-
-    marker?.setZIndex(zIndex);
 }
 
 function setMarkerVisible(marker, isVisible) {
     if (marker?.__isAdvancedMarker) {
         marker.map = isVisible ? marker.__defaultMap : null;
-        return;
     }
-
-    marker?.setVisible(isVisible);
 }
 
 function setMarkerColor(marker, color) {
@@ -637,32 +623,23 @@ function setMarkerColor(marker, color) {
     }
 
     if (marker.__isAdvancedMarker) {
-        marker.content = createMapMarkerContent({
-            scale: 1,
-            background: color,
-            borderColor: '#ffffff',
-            glyphColor: color,
-        });
-        return;
+        if (marker.__markerShape === 'circle') {
+            marker.content = createCircleMarkerContent(color);
+        } else {
+            marker.content = createMapMarkerContent({
+                scale: 1,
+                background: color,
+                borderColor: '#ffffff',
+                glyphColor: color,
+            });
+        }
     }
-
-    marker.setIcon({
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: color,
-        fillOpacity: 1,
-        strokeColor: '#ffffff',
-        strokeWeight: 2,
-    });
 }
 
 function removeMarker(marker) {
     if (marker?.__isAdvancedMarker) {
         marker.map = null;
-        return;
     }
-
-    marker?.setMap(null);
 }
 
 function addMarkerClickListener(marker, handler) {
@@ -1262,7 +1239,7 @@ function initMap() {
                     'Your Location',
                     USER_MARKER_Z_INDEX,
                     MARKER_COLOR_DEFAULT,
-                    true,
+                    'circle',
                 ));
                 markersById.set('user-location', userMarker);
 
@@ -1421,7 +1398,7 @@ function initMap() {
                 'Search Location',
                 USER_MARKER_Z_INDEX,
                 MARKER_COLOR_CHEAPEST,
-                true,
+                'pin',
             ));
             markersById.set('search-location', searchMarker);
 
@@ -1524,22 +1501,12 @@ function renderPins(pins) {
             position: { lat: pin.lat, lng: pin.lng },
             map,
             title: stationName,
-            preferLegacy: false,
+            markerShape: 'pin',
             pinOptions: {
                 scale: 1,
                 background: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
                 borderColor: '#ffffff',
                 glyphColor: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
-            },
-            legacyOptions: {
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2,
-                },
             },
         });
 
