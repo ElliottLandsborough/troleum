@@ -38,6 +38,7 @@ RUN go build -ldflags="-s -w" -trimpath -o main .
 # Use a minimal image to run the binary safely
 # PROD
 FROM alpine:latest
+ARG ASSET_VERSION=dev
 # DEV - we need debian for debugging tools and to avoid musl issues
 #FROM debian:bookworm-slim
 
@@ -64,6 +65,9 @@ COPY --chown=appuser:appuser --chmod=444 app/uk_land_osm.json ./uk_land_osm.json
 
 # Copy static/web files (read-only)
 COPY --chown=appuser:appuser --chmod=555 static ./static
+
+# Stamp static asset URLs at build time so each deployed image gets a fresh cache-bust token.
+RUN sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html
 
 # Ensure runtime paths are writable by the non-root user
 RUN mkdir -p /app/json && chown -R appuser:appuser /app && chmod 755 /app/json

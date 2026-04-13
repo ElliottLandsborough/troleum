@@ -13,6 +13,9 @@ APP_CONTAINER_NAME = troleum_app
 # Binary name
 BINARY = main
 
+# Build-time cache bust token for static assets in production images
+ASSET_VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)-$(shell date +%Y%m%d%H%M%S)
+
 # Default target - use Docker Compose
 .PHONY: run
 run:
@@ -26,7 +29,7 @@ standalone:
 # Build Docker image standalone (without compose)
 .PHONY: build-standalone
 build-standalone:
-	docker build -t $(IMAGE_NAME) .
+	docker build --build-arg ASSET_VERSION=$(ASSET_VERSION) -t $(IMAGE_NAME) .
 
 # Build with Docker Compose
 .PHONY: build
@@ -86,7 +89,7 @@ save-image:
 
 .PHONY: build-remote-image
 build-remote-image:
-	docker buildx build --platform $(REMOTE_PLATFORM) --load -t $(IMAGE_NAME) .
+	docker buildx build --platform $(REMOTE_PLATFORM) --build-arg ASSET_VERSION=$(ASSET_VERSION) --load -t $(IMAGE_NAME) .
 
 # send docker image to remote server over scp
 .PHONY: send-image
