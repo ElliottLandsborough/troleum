@@ -206,6 +206,7 @@ function buildMapOptions(viewState = null) {
         center: viewState?.center ?? { lat: 54.23782, lng: -4.555111 },
         mapTypeControl: true,
         streetViewControl: false,
+        clickableIcons: false,
         //renderingType: RenderingType.VECTOR,
     };
 
