@@ -749,7 +749,7 @@ function getUserLocationInfoContent() {
     const safeAddress = escapeHtml(userEstimatedAddress || 'Address unavailable');
     return `
         <div class="info-window">
-            <h3>Your estimated location</h3>
+            <h3>My location</h3>
             <p class="address">📍 ${safeAddress}</p>
         </div>
     `;
@@ -817,6 +817,8 @@ function setFollowMeMode() {
             setMarkerVisible(marker, false);
         } else if (id === 'user-location') {
             setMarkerVisible(marker, true);
+            setMarkerColor(marker, '#4285F4');
+            setMarkerZIndex(marker, USER_MARKER_Z_INDEX);
         }
     });
 
@@ -1332,6 +1334,7 @@ function initMap() {
                 const userMarker = markersById.get('user-location');
                 setMarkerPosition(userMarker, { lat, lng: lon });
                 setMarkerZIndex(userMarker, USER_MARKER_Z_INDEX);
+                setMarkerColor(userMarker, '#4285F4');
                 if (isFollowingMyLocation) {
                     setMarkerVisible(userMarker, true);
                 }
