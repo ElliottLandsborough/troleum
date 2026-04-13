@@ -228,6 +228,49 @@ func TestFetchPagesReturnFalseWhenContextCanceled(t *testing.T) {
 	}
 }
 
+func TestFetchPagesRequestErrorQueuesRetry(t *testing.T) {
+	originalQueue := globalRetryQueue
+	globalRetryQueue = &RetryQueue{requests: make([]RetryRequest, 0)}
+	t.Cleanup(func() { globalRetryQueue = originalQueue })
+
+	rateLimiter := time.NewTicker(1 * time.Millisecond)
+	defer rateLimiter.Stop()
+
+	t.Run("stations request error queues retry", func(t *testing.T) {
+		globalRetryQueue.requests = nil
+		client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("boom")
+		}))
+
+		if got := fetchStationsPage(context.Background(), client, 9, rateLimiter); got {
+			t.Fatal("expected false when stations request fails")
+		}
+		if len(globalRetryQueue.requests) != 1 {
+			t.Fatalf("expected one queued retry, got %d", len(globalRetryQueue.requests))
+		}
+		if queued := globalRetryQueue.requests[0]; queued.PageNum != 9 || !queued.IsStations {
+			t.Fatalf("unexpected queued request: %+v", queued)
+		}
+	})
+
+	t.Run("prices request error queues retry", func(t *testing.T) {
+		globalRetryQueue.requests = nil
+		client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("boom")
+		}))
+
+		if got := fetchPricesPage(context.Background(), client, 10, rateLimiter); got {
+			t.Fatal("expected false when prices request fails")
+		}
+		if len(globalRetryQueue.requests) != 1 {
+			t.Fatalf("expected one queued retry, got %d", len(globalRetryQueue.requests))
+		}
+		if queued := globalRetryQueue.requests[0]; queued.PageNum != 10 || queued.IsStations {
+			t.Fatalf("unexpected queued request: %+v", queued)
+		}
+	})
+}
+
 func TestFetchStationsPageStatusAndQueueBehavior(t *testing.T) {
 	originalQueue := globalRetryQueue
 	globalRetryQueue = &RetryQueue{requests: make([]RetryRequest, 0)}
