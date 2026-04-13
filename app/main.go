@@ -20,40 +20,61 @@ const (
 	NodeIDCountThreshold                = 500 // Threshold for considering a page to be 'full' of data
 )
 
+var (
+	mainWithCancel                      = context.WithCancel
+	mainMakeSignalChan                  = func() chan os.Signal { return make(chan os.Signal, 1) }
+	mainSignalNotify                    = signal.Notify
+	mainLoadUKBoundary                  = loadUKBoundary
+	mainHasUKGeofenceData               = hasUKGeofenceData
+	mainInitEnrichmentTimer             = initEnrichmentTimer
+	mainLoadDataFromJSONFiles           = loadDataFromJSONFiles
+	mainLoadDotEnv                      = loadDotEnv
+	mainLoadConfig                      = LoadConfig
+	mainStartWebServer                  = StartWebServer
+	mainNewOAuthClient                  = NewOAuthClient
+	mainNewTicker                       = time.NewTicker
+	mainContinuousFetchStations         = continuousFetchStations
+	mainContinuousFetchPrices           = continuousFetchPrices
+	mainContinuousUpdateCachedFuelTypes = continuousUpdateCachedFuelTypes
+	mainRetryWorker                     = retryWorker
+	mainSleep                           = time.Sleep
+	mainLogFatal                        = log.Fatal
+)
+
 // main is the entry point of the application
 func main() {
 	// Create context that can be cancelled for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := mainWithCancel(context.Background())
 	defer cancel()
 
 	// Set up signal handling for graceful shutdown
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	stop := mainMakeSignalChan()
+	mainSignalNotify(stop, os.Interrupt, syscall.SIGTERM)
 
 	// Boundary data is required for coordinate normalization; fail fast if unavailable.
-	loadUKBoundary()
-	if !hasUKGeofenceData() {
-		log.Fatal("UK OSM boundary data failed to load; refusing to start")
+	mainLoadUKBoundary()
+	if !mainHasUKGeofenceData() {
+		mainLogFatal("UK OSM boundary data failed to load; refusing to start")
 	}
 
 	// Initialize enrichment timer BEFORE starting fetchers
-	initEnrichmentTimer(ctx)
+	mainInitEnrichmentTimer(ctx)
 
 	// enrich memory from json files on startup
-	loadDataFromJSONFiles()
+	mainLoadDataFromJSONFiles()
 
 	// load the .env file manually
-	if err := loadDotEnv(".env"); err != nil {
+	if err := mainLoadDotEnv(".env"); err != nil {
 		fmt.Println("Warning: could not load .env file:", err)
 	}
 
-	cfg := LoadConfig()
+	cfg := mainLoadConfig()
 
 	// Start web server for saved pages
-	StartWebServer(ctx)
+	mainStartWebServer(ctx)
 
 	// Create OAuth client
-	client := NewOAuthClient(
+	client := mainNewOAuthClient(
 		"https://www.fuel-finder.service.gov.uk/api/v1/oauth/generate_access_token",
 		cfg.ClientID,
 		cfg.ClientSecret,
@@ -61,22 +82,22 @@ func main() {
 	)
 
 	// Create rate limiter (3 requests per minute = 1 request every 20 seconds)
-	rateLimiter := time.NewTicker(20 * time.Second)
+	rateLimiter := mainNewTicker(20 * time.Second)
 	// prod allows 6 requests per minute, so use:
 	// rateLimiter := time.NewTicker(10 * time.Second)
 	defer rateLimiter.Stop()
 
 	// Start continuous fetching in a goroutine
-	go continuousFetchStations(ctx, client, rateLimiter)
+	go mainContinuousFetchStations(ctx, client, rateLimiter)
 
 	// Start continuous fetching of prices in a goroutine
-	go continuousFetchPrices(ctx, client, rateLimiter)
+	go mainContinuousFetchPrices(ctx, client, rateLimiter)
 
 	// Start continuous fuel types cache updates in a goroutine
-	go continuousUpdateCachedFuelTypes(ctx)
+	go mainContinuousUpdateCachedFuelTypes(ctx)
 
 	// Start retry worker in a goroutine
-	go retryWorker(ctx, client, rateLimiter)
+	go mainRetryWorker(ctx, client, rateLimiter)
 
 	// Keep main running and allow for other code
 	log.Println("Started continuous data fetching...")
@@ -91,7 +112,7 @@ func main() {
 
 	// Give goroutines time to clean up (web server has its own 30s timeout)
 	log.Println("Waiting for background workers to finish...")
-	time.Sleep(2 * time.Second)
+	mainSleep(2 * time.Second)
 
 	log.Println("Shutdown complete")
 }
