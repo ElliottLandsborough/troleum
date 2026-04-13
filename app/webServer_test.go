@@ -137,12 +137,12 @@ func TestSetupWebServer(t *testing.T) {
 
 	tempDir := withTempWorkingDir(t)
 	staticDir := filepath.Join(tempDir, "static")
-	imgDir := filepath.Join(tempDir, "img")
+	assetsDir := filepath.Join(tempDir, "assets")
 	if err := os.MkdirAll(staticDir, 0o755); err != nil {
 		t.Fatalf("mkdir static dir: %v", err)
 	}
-	if err := os.MkdirAll(imgDir, 0o755); err != nil {
-		t.Fatalf("mkdir img dir: %v", err)
+	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+		t.Fatalf("mkdir assets dir: %v", err)
 	}
 	files := map[string]string{
 		"index.html":  "<html>index</html>",
@@ -157,6 +157,7 @@ func TestSetupWebServer(t *testing.T) {
 		}
 	}
 	imgFiles := map[string]string{
+		"favicon.ico":                  "ico",
 		"favicon-16x16.png":            "png",
 		"favicon-32x32.png":            "png",
 		"favicon-48x48.png":            "png",
@@ -166,8 +167,8 @@ func TestSetupWebServer(t *testing.T) {
 		"android-chrome-512x512.png":   "png",
 	}
 	for name, content := range imgFiles {
-		if err := os.WriteFile(filepath.Join(imgDir, name), []byte(content), 0o600); err != nil {
-			t.Fatalf("write img file %s: %v", name, err)
+		if err := os.WriteFile(filepath.Join(assetsDir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write assets file %s: %v", name, err)
 		}
 	}
 
@@ -226,18 +227,27 @@ func TestSetupWebServer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/img/favicon-32x32.png", nil))
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 from img asset route, got %d", w.Code)
+		t.Fatalf("expected 200 from root favicon route, got %d", w.Code)
 	}
 	if !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
-		t.Fatalf("expected immutable cache headers on img asset route, got %q", w.Header().Get("Cache-Control"))
+		t.Fatalf("expected immutable cache headers on root favicon route, got %q", w.Header().Get("Cache-Control"))
 	}
 
 	w = httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/img/not-served.png", nil))
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/favicon-32x32.png", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from assets asset route, got %d", w.Code)
+	}
+	if !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+		t.Fatalf("expected immutable cache headers on assets asset route, got %q", w.Header().Get("Cache-Control"))
+	}
+
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/not-served.png", nil))
 	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 from unknown img asset route, got %d", w.Code)
+		t.Fatalf("expected 404 from unknown assets route, got %d", w.Code)
 	}
 
 	w = httptest.NewRecorder()

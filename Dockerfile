@@ -63,6 +63,16 @@ COPY --from=builder --chown=appuser:appuser --chmod=555 /app/main .
 # Copy OSM-derived UK boundary data used for coordinate correction
 COPY --chown=appuser:appuser --chmod=444 app/uk_land_osm.json ./uk_land_osm.json
 
+# Copy image assets (read-only, not executable)
+COPY --chown=appuser:appuser --chmod=500 assets/favicon.ico ./assets/favicon.ico
+COPY --chown=appuser:appuser --chmod=500 assets/favicon-16x16.png ./assets/favicon-16x16.png
+COPY --chown=appuser:appuser --chmod=500 assets/favicon-32x32.png ./assets/favicon-32x32.png
+COPY --chown=appuser:appuser --chmod=500 assets/favicon-48x48.png ./assets/favicon-48x48.png
+COPY --chown=appuser:appuser --chmod=500 assets/apple-touch-icon-180x180.png ./assets/apple-touch-icon-180x180.png
+COPY --chown=appuser:appuser --chmod=500 assets/apple-touch-icon.png ./assets/apple-touch-icon.png
+COPY --chown=appuser:appuser --chmod=500 assets/android-chrome-192x192.png ./assets/android-chrome-192x192.png
+COPY --chown=appuser:appuser --chmod=500 assets/android-chrome-512x512.png ./assets/android-chrome-512x512.png
+
 # Copy static/web files (read-only)
 COPY --chown=appuser:appuser --chmod=555 static ./static
 
