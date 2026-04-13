@@ -795,6 +795,31 @@ function setSearchLocationMode(lat, lng) {
     updateFollowMeUI();
 }
 
+function getStationRequestOrigin() {
+    if (isFollowingMyLocation) {
+        if (userLat != null && userLng != null) {
+            return { lat: userLat, lng: userLng };
+        }
+        return null;
+    }
+
+    const searchMarker = markersById.get('search-location');
+    const searchPosition = searchMarker ? getMarkerPosition(searchMarker) : null;
+    if (searchPosition) {
+        const lat = typeof searchPosition.lat === 'function' ? searchPosition.lat() : searchPosition.lat;
+        const lng = typeof searchPosition.lng === 'function' ? searchPosition.lng() : searchPosition.lng;
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            return { lat, lng };
+        }
+    }
+
+    if (userLat != null && userLng != null) {
+        return { lat: userLat, lng: userLng };
+    }
+
+    return null;
+}
+
 function preloadFuelTypes() {
     if (fuelTypesPromise) {
         return fuelTypesPromise;
@@ -1302,10 +1327,10 @@ function initMap() {
         clearTimeout(debounceTimer);
 
         const url = new URL('/api/stations', window.location.origin);
-        // Use last known user location from watchPosition if available.
-        if (userLat != null && userLng != null) {
-            url.searchParams.set('lat', userLat);
-            url.searchParams.set('lng', userLng);
+        const requestOrigin = getStationRequestOrigin();
+        if (requestOrigin) {
+            url.searchParams.set('lat', requestOrigin.lat);
+            url.searchParams.set('lng', requestOrigin.lng);
         }
 
         const selectedFuelType = getSelectedFuelSortValue();
@@ -1427,6 +1452,7 @@ function initMap() {
         }
 
         setSearchLocationMode(lat, lng);
+        requestStationsForCurrentView?.();
 
         // Center map on the selected marker itself.
         map.setCenter({ lat, lng });
