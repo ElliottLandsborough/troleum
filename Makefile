@@ -41,6 +41,7 @@ clean:
 # Full rebuild without cache
 .PHONY: rebuildrun
 rebuildrun:
+	$(MAKE) test
 	docker-compose down || true
 	docker system prune -af
 	docker rmi -f $(IMAGE_NAME) || true
