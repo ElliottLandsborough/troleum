@@ -56,6 +56,35 @@ func TestCacheAssetsMiddleware(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersMiddleware(t *testing.T) {
+	h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options nosniff, got %q", got)
+	}
+	if got := w.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("expected X-Frame-Options DENY, got %q", got)
+	}
+	if got := w.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+		t.Fatalf("expected Referrer-Policy strict-origin-when-cross-origin, got %q", got)
+	}
+	if got := w.Header().Get("Permissions-Policy"); got != "geolocation=(self)" {
+		t.Fatalf("expected Permissions-Policy geolocation=(self), got %q", got)
+	}
+	if got := w.Header().Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
+		t.Fatalf("expected Cross-Origin-Opener-Policy same-origin, got %q", got)
+	}
+	if got := w.Header().Get("Cross-Origin-Resource-Policy"); got != "same-origin" {
+		t.Fatalf("expected Cross-Origin-Resource-Policy same-origin, got %q", got)
+	}
+}
+
 func TestRootHandlerAndServeNotFoundPage(t *testing.T) {
 	tempDir := withTempWorkingDir(t)
 	staticDir := filepath.Join(tempDir, "static")
@@ -144,6 +173,12 @@ func TestSetupWebServer(t *testing.T) {
 	if w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("expected no-store on api route, got %q", w.Header().Get("Cache-Control"))
 	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options nosniff on api route, got %q", got)
+	}
+	if got := w.Header().Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
+		t.Fatalf("expected Cross-Origin-Opener-Policy same-origin on api route, got %q", got)
+	}
 
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/main.css", nil))
@@ -152,6 +187,12 @@ func TestSetupWebServer(t *testing.T) {
 	}
 	if !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
 		t.Fatalf("expected immutable cache headers on asset route, got %q", w.Header().Get("Cache-Control"))
+	}
+	if got := w.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+		t.Fatalf("expected Referrer-Policy on asset route, got %q", got)
+	}
+	if got := w.Header().Get("Cross-Origin-Resource-Policy"); got != "same-origin" {
+		t.Fatalf("expected Cross-Origin-Resource-Policy on asset route, got %q", got)
 	}
 
 	w = httptest.NewRecorder()

@@ -65,6 +65,18 @@ func cacheAssets(next http.Handler) http.Handler {
 	})
 }
 
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(self)")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func setupWebServer() *http.Server {
 	mux := http.NewServeMux()
 
@@ -102,7 +114,7 @@ func setupWebServer() *http.Server {
 
 	return &http.Server{
 		Addr:           "0.0.0.0:8080",
-		Handler:        mux,
+		Handler:        securityHeaders(mux),
 		MaxHeaderBytes: 1 << 20,          // 1MB max for request headers (URL + all headers combined)
 		ReadTimeout:    15 * time.Second, // Prevent slowloris attacks
 		WriteTimeout:   15 * time.Second, // Prevent slow client writes
