@@ -16,6 +16,10 @@ let userEstimatedAddress = null;
 let searchLocationInfoWindow = null;
 let searchSetAddress = null;
 const USER_MARKER_Z_INDEX = 1000000;
+const MARKER_COLOR_DEFAULT = '#4285F4';
+const MARKER_COLOR_CHEAPEST = '#34A853';
+const MARKER_COLOR_MEDIUM = '#FBBC05';
+const MARKER_COLOR_EXPENSIVE = '#EA4335';
 const FUEL_TYPE_DISPLAY_ORDER = [
     'E10',
     'E5',
@@ -306,15 +310,16 @@ function createMapMarkerContent(pinOptions = {}) {
 
 function createMapMarker({ map, position, title, zIndex, pinOptions, legacyOptions = {} }) {
     const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement || google.maps.AdvancedMarkerElement;
+    const markerContent = createMapMarkerContent(pinOptions);
 
-    if (typeof AdvancedMarkerElement === 'function') {
+    if (typeof AdvancedMarkerElement === 'function' && (!pinOptions || markerContent)) {
         const marker = new AdvancedMarkerElement({
             map,
             position,
             title,
             zIndex,
             gmpClickable: true,
-            content: createMapMarkerContent(pinOptions),
+            content: markerContent,
         });
 
         marker.__isAdvancedMarker = true;
@@ -373,6 +378,31 @@ function setMarkerVisible(marker, isVisible) {
     }
 
     marker?.setVisible(isVisible);
+}
+
+function setMarkerColor(marker, color) {
+    if (!marker) {
+        return;
+    }
+
+    if (marker.__isAdvancedMarker) {
+        marker.content = createMapMarkerContent({
+            scale: 1,
+            background: color,
+            borderColor: '#ffffff',
+            glyphColor: color,
+        });
+        return;
+    }
+
+    marker.setIcon({
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+    });
 }
 
 function removeMarker(marker) {
@@ -635,6 +665,54 @@ function getFuelPriceForType(pin, fuelType) {
 
     const numericPrice = Number(matchingPrice.price);
     return Number.isFinite(numericPrice) ? numericPrice : null;
+}
+
+function buildMarkerColorByPinId(pinList, selectedFuelType) {
+    const colorByPinId = new Map();
+
+    if (!selectedFuelType) {
+        pinList.forEach(pin => {
+            colorByPinId.set(String(pin.id), MARKER_COLOR_DEFAULT);
+        });
+        return colorByPinId;
+    }
+
+    const pricedPins = pinList.map(pin => ({
+        id: String(pin.id),
+        price: getFuelPriceForType(pin, selectedFuelType),
+    })).filter(entry => entry.price != null);
+
+    if (pricedPins.length === 0) {
+        pinList.forEach(pin => {
+            colorByPinId.set(String(pin.id), MARKER_COLOR_DEFAULT);
+        });
+        return colorByPinId;
+    }
+
+    const sortedPrices = pricedPins.map(entry => entry.price).sort((a, b) => a - b);
+    const lowThreshold = sortedPrices[Math.floor((sortedPrices.length - 1) / 3)];
+    const highThreshold = sortedPrices[Math.floor(((sortedPrices.length - 1) * 2) / 3)];
+
+    pricedPins.forEach(entry => {
+        if (entry.price <= lowThreshold) {
+            colorByPinId.set(entry.id, MARKER_COLOR_CHEAPEST);
+            return;
+        }
+        if (entry.price <= highThreshold) {
+            colorByPinId.set(entry.id, MARKER_COLOR_MEDIUM);
+            return;
+        }
+        colorByPinId.set(entry.id, MARKER_COLOR_EXPENSIVE);
+    });
+
+    pinList.forEach(pin => {
+        const id = String(pin.id);
+        if (!colorByPinId.has(id)) {
+            colorByPinId.set(id, MARKER_COLOR_DEFAULT);
+        }
+    });
+
+    return colorByPinId;
 }
 
 function getSortedPinsForSelection(pinList) {
@@ -1166,6 +1244,7 @@ function renderPins(pins) {
     console.warn(`Fetched ${pinList.length} pins from the server`);
     const selectedFuelType = getSelectedFuelSortValue();
     const isDistanceSelected = selectedFuelType == null;
+    const markerColorByPinId = buildMarkerColorByPinId(pinList, selectedFuelType);
 
     updateSortOptionsFromPins(pinList);
 
@@ -1214,6 +1293,7 @@ function renderPins(pins) {
             const existingMarker = markersById.get(id);
             setMarkerPosition(existingMarker, { lat: pin.lat, lng: pin.lng });
             setMarkerTitle(existingMarker, pin.name || '');
+            setMarkerColor(existingMarker, markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT);
 
             const existingInfoWindow = infoWindowsById.get(id);
             if (existingInfoWindow) {
@@ -1228,6 +1308,22 @@ function renderPins(pins) {
             position: { lat: pin.lat, lng: pin.lng },
             map,
             title: pin.name,
+            pinOptions: {
+                scale: 1,
+                background: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
+                borderColor: '#ffffff',
+                glyphColor: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
+            },
+            legacyOptions: {
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: markerColorByPinId.get(id) || MARKER_COLOR_DEFAULT,
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2,
+                },
+            },
         });
 
         const infoWindow = new google.maps.InfoWindow({
