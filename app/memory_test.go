@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -123,6 +124,83 @@ func TestPriceStationGetNodeID(t *testing.T) {
 	if got := station.GetNodeID(); got != "station-xyz" {
 		t.Fatalf("GetNodeID() = %q, want %q", got, "station-xyz")
 	}
+}
+
+func TestResetEnrichmentTimerLocked(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	resetEnrichmentTimerLocked(10 * time.Millisecond)
+
+	enrichmentTimerMutex.Lock()
+	enrichmentTimer = time.NewTimer(time.Hour)
+	enrichmentTimerMutex.Unlock()
+
+	resetEnrichmentTimerLocked(10 * time.Millisecond)
+
+	enrichmentTimerMutex.Lock()
+	timer := enrichmentTimer
+	enrichmentTimerMutex.Unlock()
+
+	if timer == nil {
+		t.Fatal("expected enrichment timer to be initialized")
+	}
+
+	select {
+	case <-timer.C:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("expected reset timer to fire quickly")
+	}
+}
+
+func TestTriggerEnrichmentWithResetHandlesNilTimer(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	triggerEnrichmentWithReset()
+
+	enrichmentTimerMutex.Lock()
+	defer enrichmentTimerMutex.Unlock()
+	if enrichmentTimer != nil {
+		t.Fatal("expected enrichment timer to remain nil")
+	}
+}
+
+func TestTriggerEnrichmentWithResetKeepsTimer(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	enrichmentTimerMutex.Lock()
+	enrichmentTimer = time.NewTimer(time.Hour)
+	enrichmentTimerMutex.Unlock()
+
+	triggerEnrichmentWithReset()
+
+	enrichmentTimerMutex.Lock()
+	defer enrichmentTimerMutex.Unlock()
+	if enrichmentTimer == nil {
+		t.Fatal("expected enrichment timer to remain initialized")
+	}
+}
+
+func TestInitEnrichmentTimerCreatesTimerAndStopsOnCancel(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	initEnrichmentTimer(ctx)
+
+	enrichmentTimerMutex.Lock()
+	hasTimer := enrichmentTimer != nil
+	enrichmentTimerMutex.Unlock()
+	if !hasTimer {
+		t.Fatal("expected enrichment timer to be initialized")
+	}
+
+	cancel()
+
+	// Give the worker goroutine a moment to observe cancellation.
+	time.Sleep(10 * time.Millisecond)
 }
 
 func withTempWorkingDir(t *testing.T) string {

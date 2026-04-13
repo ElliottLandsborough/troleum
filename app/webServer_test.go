@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNoStoreMiddleware(t *testing.T) {
@@ -146,4 +148,18 @@ func TestSetupWebServer(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 from fallback route, got %d", w.Code)
 	}
+}
+
+func TestStartWebServerReturnsServerAndHandlesCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := StartWebServer(ctx)
+	if srv == nil {
+		t.Fatal("expected server instance")
+	}
+
+	cancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer shutdownCancel()
+	_ = srv.Shutdown(shutdownCtx)
 }

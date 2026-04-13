@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+)
 
 func TestNormalizeFuelPriceValue(t *testing.T) {
 	tests := []struct {
@@ -80,4 +84,21 @@ func TestFilterStationsByFuelType(t *testing.T) {
 	if filterStationsByFuelType(stationsInput, "") == nil || len(filterStationsByFuelType(stationsInput, "")) != 3 {
 		t.Fatal("expected empty fuel type to return original stations")
 	}
+}
+
+func TestContinuousUpdateCachedFuelTypesStopsWhenContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	continuousUpdateCachedFuelTypes(ctx)
+}
+
+func TestContinuousFetchPricesStopsWhenContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	continuousFetchPrices(ctx, nil, rateLimiter)
 }

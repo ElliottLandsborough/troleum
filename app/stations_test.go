@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"math"
 	"testing"
+	"time"
 )
 
 func TestHaversine(t *testing.T) {
@@ -30,4 +32,14 @@ func TestStationsByDistance(t *testing.T) {
 	if sorted[0].NodeID != "near" || sorted[1].NodeID != "mid" || sorted[2].NodeID != "far" {
 		t.Fatalf("unexpected station order: %s, %s, %s", sorted[0].NodeID, sorted[1].NodeID, sorted[2].NodeID)
 	}
+}
+
+func TestContinuousFetchStationsStopsWhenContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rateLimiter := time.NewTicker(time.Hour)
+	defer rateLimiter.Stop()
+
+	continuousFetchStations(ctx, nil, rateLimiter)
 }
