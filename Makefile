@@ -21,16 +21,6 @@ ASSET_VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)-$(s
 run:
 	docker-compose up -d
 
-# Build and run with standalone Docker (alternative to compose)
-.PHONY: standalone
-standalone:
-	$(MAKE) build-standalone && docker run -p 8080:8080 -v $(PWD)/json:/app/json --name $(APP_CONTAINER_NAME)_standalone -e OAUTH_CLIENT_ID -e OAUTH_CLIENT_SECRET $(IMAGE_NAME)
-
-# Build Docker image standalone (without compose)
-.PHONY: build-standalone
-build-standalone:
-	docker build --build-arg ASSET_VERSION=$(ASSET_VERSION) -t $(IMAGE_NAME) .
-
 # Build with Docker Compose
 .PHONY: build
 build:
@@ -46,19 +36,15 @@ test:
 clean:
 	rm -f $(BINARY)
 	docker-compose down || true
-	docker kill $(APP_CONTAINER_NAME)_standalone || true
-	docker rm -f $(APP_CONTAINER_NAME)_standalone || true
+	docker rm -f $(APP_CONTAINER_NAME) || true
 
 # Full rebuild without cache
 .PHONY: rebuildrun
 rebuildrun:
 	docker-compose down || true
 	docker system prune -af
-	docker kill $(APP_CONTAINER_NAME) || true
 	docker rmi -f $(IMAGE_NAME) || true
 	docker rm -f $(APP_CONTAINER_NAME) || true
-	docker kill $(APP_CONTAINER_NAME)_standalone || true
-	docker rm -f $(APP_CONTAINER_NAME)_standalone || true
 	$(MAKE) clean
 	$(MAKE) run
 	$(MAKE) logs-app
@@ -103,7 +89,7 @@ send-image:
 # execute image on remote server
 .PHONY: run-remote
 run-remote:
-	ssh troleumdeploy "docker kill troleum_app || true && docker rm -f troleum_app || true"
+	ssh troleumdeploy "docker rm -f troleum_app || true"
 	ssh troleumdeploy "docker load -i /home/deploy/troleum/troleum_image.tar && docker rm -f $(APP_CONTAINER_NAME) || true && docker run --user $(REMOTE_UID) -d --restart always --platform $(REMOTE_PLATFORM) -p 8080:8080 -v /home/deploy/troleum/json:/app/json:Z --name $(APP_CONTAINER_NAME) --env-file /home/deploy/troleum/.env $(IMAGE_NAME)"
 	ssh troleumdeploy "rm -f /home/deploy/troleum/troleum_image.tar"
 	ssh troleumdeploy "docker logs -f $(APP_CONTAINER_NAME)"
