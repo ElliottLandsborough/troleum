@@ -251,9 +251,13 @@ func TestRetryWorkerProcessOutcomeBranches(t *testing.T) {
 			lastPricesCycleComplete = time.Time{}
 
 			ctx, cancel := context.WithCancel(context.Background())
+			tickFired := false
 			retryWorkerTickAfter = func(time.Duration) <-chan time.Time {
 				ch := make(chan time.Time, 1)
-				ch <- time.Now()
+				if !tickFired {
+					tickFired = true
+					ch <- time.Now()
+				}
 				return ch
 			}
 
@@ -358,9 +362,13 @@ func TestRetryWorkerContextDoneWhileWaitingRateLimiter(t *testing.T) {
 	lastStationsCycleComplete = time.Time{}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	tickFired := false
 	retryWorkerTickAfter = func(time.Duration) <-chan time.Time {
 		ch := make(chan time.Time, 1)
-		ch <- time.Now()
+		if !tickFired {
+			tickFired = true
+			ch <- time.Now()
+		}
 		return ch
 	}
 
