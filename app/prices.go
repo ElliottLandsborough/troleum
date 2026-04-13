@@ -12,6 +12,9 @@ var pricesAbortCycleWait = time.After
 var fetchPricesPageForCycle = fetchPricesPage
 
 const pricesAbortCycleBackoff = 2 * time.Minute
+const pricesAbortCycleMaxBackoff = 15 * time.Minute
+const pricesMaxPagesPerCycle = 200
+const pricesMaxConsecutiveSkippedPages = 3
 
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint
 type FuelPrice struct {
@@ -149,6 +152,8 @@ func continuousUpdateCachedFuelTypes(ctx context.Context) {
 func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
+	consecutiveCycleAborts := 0
+	consecutiveSkippedPages := 0
 
 	for {
 		select {
@@ -187,6 +192,8 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 		fetchResult := fetchPricesPageForCycle(ctx, client, currentPage, rateLimiter)
 
 		if fetchResult == pageFetchFinalPage {
+			consecutiveCycleAborts = 0
+			consecutiveSkippedPages = 0
 			cycleDuration := time.Since(cycleStartTime)
 			now := time.Now()
 
@@ -200,19 +207,67 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 		}
 
 		if fetchResult == pageFetchAbortCycle {
-			log.Printf("[PRICES] Cycle aborted before final page (stopped at page %d), retrying from page 1 after %v", currentPage, pricesAbortCycleBackoff)
-			currentPage = 1
+			consecutiveCycleAborts++
+			consecutiveSkippedPages = 0
+			abortDelay := computeAbortBackoff(pricesAbortCycleBackoff, pricesAbortCycleMaxBackoff, consecutiveCycleAborts)
+			log.Printf("[PRICES] Cycle aborted before final page (stopped at page %d), retrying page %d after %v (abort attempt %d)", currentPage, currentPage, abortDelay, consecutiveCycleAborts)
 			select {
 			case <-ctx.Done():
 				log.Println("[PRICES] Shutdown requested, stopping fetch worker")
 				return
-			case <-pricesAbortCycleWait(pricesAbortCycleBackoff):
+			case <-pricesAbortCycleWait(abortDelay):
+			}
+			continue
+		}
+
+		if fetchResult == pageFetchSkipPage {
+			consecutiveCycleAborts = 0
+			consecutiveSkippedPages++
+			if consecutiveSkippedPages >= pricesMaxConsecutiveSkippedPages {
+				cycleDuration := time.Since(cycleStartTime)
+				now := time.Now()
+
+				cycleTimeMutex.Lock()
+				lastPricesCycleComplete = now
+				cycleTimeMutex.Unlock()
+
+				log.Printf("[PRICES] Ending cycle after %d consecutive skipped page(s) (latest page %d), duration %v, restarting from page 1", consecutiveSkippedPages, currentPage, cycleDuration)
+				currentPage = 1
+				consecutiveSkippedPages = 0
+				continue
+			}
+
+			currentPage++
+			if currentPage > pricesMaxPagesPerCycle {
+				cycleDuration := time.Since(cycleStartTime)
+				now := time.Now()
+
+				cycleTimeMutex.Lock()
+				lastPricesCycleComplete = now
+				cycleTimeMutex.Unlock()
+
+				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", pricesMaxPagesPerCycle, cycleDuration)
+				currentPage = 1
+				consecutiveSkippedPages = 0
 			}
 			continue
 		}
 
 		if fetchResult == pageFetchContinue {
+			consecutiveCycleAborts = 0
+			consecutiveSkippedPages = 0
 			currentPage++
+			if currentPage > pricesMaxPagesPerCycle {
+				cycleDuration := time.Since(cycleStartTime)
+				now := time.Now()
+
+				cycleTimeMutex.Lock()
+				lastPricesCycleComplete = now
+				cycleTimeMutex.Unlock()
+
+				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", pricesMaxPagesPerCycle, cycleDuration)
+				currentPage = 1
+			}
 		}
 	}
 }

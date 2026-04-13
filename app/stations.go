@@ -13,6 +13,9 @@ var stationsAbortCycleWait = time.After
 var fetchStationsPageForCycle = fetchStationsPage
 
 const stationsAbortCycleBackoff = 5 * time.Minute
+const stationsAbortCycleMaxBackoff = time.Hour
+const stationsMaxPagesPerCycle = 200
+const stationsMaxConsecutiveSkippedPages = 3
 
 type Station struct {
 	NodeID                      string       `json:"node_id"`
@@ -75,6 +78,8 @@ type BankHoliday struct {
 func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
+	consecutiveCycleAborts := 0
+	consecutiveSkippedPages := 0
 
 	for {
 		select {
@@ -113,6 +118,8 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 		fetchResult := fetchStationsPageForCycle(ctx, client, currentPage, rateLimiter)
 
 		if fetchResult == pageFetchFinalPage {
+			consecutiveCycleAborts = 0
+			consecutiveSkippedPages = 0
 			cycleDuration := time.Since(cycleStartTime)
 			now := time.Now()
 
@@ -126,19 +133,67 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 		}
 
 		if fetchResult == pageFetchAbortCycle {
-			log.Printf("[STATIONS] Cycle aborted before final page (stopped at page %d), retrying from page 1 after %v", currentPage, stationsAbortCycleBackoff)
-			currentPage = 1
+			consecutiveCycleAborts++
+			consecutiveSkippedPages = 0
+			abortDelay := computeAbortBackoff(stationsAbortCycleBackoff, stationsAbortCycleMaxBackoff, consecutiveCycleAborts)
+			log.Printf("[STATIONS] Cycle aborted before final page (stopped at page %d), retrying page %d after %v (abort attempt %d)", currentPage, currentPage, abortDelay, consecutiveCycleAborts)
 			select {
 			case <-ctx.Done():
 				log.Println("[STATIONS] Shutdown requested, stopping fetch worker")
 				return
-			case <-stationsAbortCycleWait(stationsAbortCycleBackoff):
+			case <-stationsAbortCycleWait(abortDelay):
+			}
+			continue
+		}
+
+		if fetchResult == pageFetchSkipPage {
+			consecutiveCycleAborts = 0
+			consecutiveSkippedPages++
+			if consecutiveSkippedPages >= stationsMaxConsecutiveSkippedPages {
+				cycleDuration := time.Since(cycleStartTime)
+				now := time.Now()
+
+				cycleTimeMutex.Lock()
+				lastStationsCycleComplete = now
+				cycleTimeMutex.Unlock()
+
+				log.Printf("[STATIONS] Ending cycle after %d consecutive skipped page(s) (latest page %d), duration %v, restarting from page 1", consecutiveSkippedPages, currentPage, cycleDuration)
+				currentPage = 1
+				consecutiveSkippedPages = 0
+				continue
+			}
+
+			currentPage++
+			if currentPage > stationsMaxPagesPerCycle {
+				cycleDuration := time.Since(cycleStartTime)
+				now := time.Now()
+
+				cycleTimeMutex.Lock()
+				lastStationsCycleComplete = now
+				cycleTimeMutex.Unlock()
+
+				log.Printf("[STATIONS] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", stationsMaxPagesPerCycle, cycleDuration)
+				currentPage = 1
+				consecutiveSkippedPages = 0
 			}
 			continue
 		}
 
 		if fetchResult == pageFetchContinue {
+			consecutiveCycleAborts = 0
+			consecutiveSkippedPages = 0
 			currentPage++
+			if currentPage > stationsMaxPagesPerCycle {
+				cycleDuration := time.Since(cycleStartTime)
+				now := time.Now()
+
+				cycleTimeMutex.Lock()
+				lastStationsCycleComplete = now
+				cycleTimeMutex.Unlock()
+
+				log.Printf("[STATIONS] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", stationsMaxPagesPerCycle, cycleDuration)
+				currentPage = 1
+			}
 		}
 	}
 }

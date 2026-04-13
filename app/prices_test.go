@@ -208,3 +208,86 @@ func TestContinuousFetchPricesCancelDuringSkipWait(t *testing.T) {
 		t.Fatal("expected no fetch when context canceled during skip wait")
 	}
 }
+
+func TestContinuousFetchPricesAbortRetriesSamePage(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastPricesCycleComplete = time.Time{}
+
+	pricesAbortCycleWait = func(time.Duration) <-chan time.Time {
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 3)
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		switch len(seenPages) {
+		case 1:
+			return pageFetchContinue
+		case 2:
+			return pageFetchAbortCycle
+		default:
+			cancel()
+			return pageFetchFinalPage
+		}
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchPrices(ctx, nil, r)
+
+	if len(seenPages) != 3 || seenPages[0] != 1 || seenPages[1] != 2 || seenPages[2] != 2 {
+		t.Fatalf("expected pages [1 2 2], got %v", seenPages)
+	}
+}
+
+func TestContinuousFetchPricesEndsCycleAfterConsecutiveSkippedPages(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastPricesCycleComplete = time.Time{}
+
+	seenPages := make([]int, 0, 5)
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		if len(seenPages) == 5 {
+			cancel()
+			return pageFetchFinalPage
+		}
+		return pageFetchSkipPage
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchPrices(ctx, nil, r)
+
+	if len(seenPages) != 5 {
+		t.Fatalf("expected 5 page fetch attempts, got %v", seenPages)
+	}
+	if seenPages[0] != 1 || seenPages[1] != 2 || seenPages[2] != 3 || seenPages[3] != 1 {
+		t.Fatalf("expected cycle reset after consecutive skips, got %v", seenPages)
+	}
+}

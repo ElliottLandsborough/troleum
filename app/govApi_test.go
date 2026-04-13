@@ -287,7 +287,7 @@ func TestFetchStationsPageStatusAndQueueBehavior(t *testing.T) {
 	}{
 		{name: "not found is last page", statusCode: http.StatusNotFound, want: pageFetchFinalPage, wantQueued: false},
 		{name: "server error queued retry", statusCode: http.StatusInternalServerError, want: pageFetchContinue, wantQueued: true},
-		{name: "bad request aborts cycle", statusCode: http.StatusBadRequest, want: pageFetchAbortCycle, wantQueued: false},
+		{name: "bad request skips page", statusCode: http.StatusBadRequest, want: pageFetchSkipPage, wantQueued: false},
 	}
 
 	for _, tt := range tests {
@@ -374,7 +374,7 @@ func TestFetchPricesPageStatusAndBodyBehavior(t *testing.T) {
 		}{
 			{http.StatusNotFound, pageFetchFinalPage, false},
 			{http.StatusTooManyRequests, pageFetchContinue, true},
-			{http.StatusBadRequest, pageFetchAbortCycle, false},
+			{http.StatusBadRequest, pageFetchSkipPage, false},
 		}
 
 		for _, tc := range cases {

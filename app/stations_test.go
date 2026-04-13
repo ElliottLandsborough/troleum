@@ -149,3 +149,48 @@ func TestContinuousFetchStationsCancelDuringSkipWait(t *testing.T) {
 		t.Fatal("expected no fetch when context canceled during skip wait")
 	}
 }
+
+func TestContinuousFetchStationsAbortRetriesSamePage(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastStationsCycleComplete = time.Time{}
+
+	stationsAbortCycleWait = func(time.Duration) <-chan time.Time {
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 3)
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		switch len(seenPages) {
+		case 1:
+			return pageFetchContinue
+		case 2:
+			return pageFetchAbortCycle
+		default:
+			cancel()
+			return pageFetchFinalPage
+		}
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchStations(ctx, nil, r)
+
+	if len(seenPages) != 3 || seenPages[0] != 1 || seenPages[1] != 2 || seenPages[2] != 2 {
+		t.Fatalf("expected pages [1 2 2], got %v", seenPages)
+	}
+}

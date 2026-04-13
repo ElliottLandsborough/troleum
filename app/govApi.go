@@ -53,8 +53,33 @@ type pageFetchResult int
 const (
 	pageFetchContinue pageFetchResult = iota
 	pageFetchFinalPage
+	pageFetchSkipPage
 	pageFetchAbortCycle
 )
+
+func computeAbortBackoff(baseDelay, maxDelay time.Duration, consecutiveAttempts int) time.Duration {
+	if consecutiveAttempts <= 1 {
+		return baseDelay
+	}
+
+	delay := baseDelay
+	for i := 1; i < consecutiveAttempts; i++ {
+		if delay >= maxDelay {
+			return maxDelay
+		}
+		nextDelay := delay * 2
+		if nextDelay > maxDelay {
+			return maxDelay
+		}
+		delay = nextDelay
+	}
+
+	if delay > maxDelay {
+		return maxDelay
+	}
+
+	return delay
+}
 
 // Constructor
 func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient {
@@ -201,8 +226,8 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 			return pageFetchContinue
 		}
 
-		log.Printf("[STATIONS] Non-retriable status %d on page %d, ending cycle to avoid runaway paging", resp.StatusCode, pageNum)
-		return pageFetchAbortCycle
+		log.Printf("[STATIONS] Non-retriable status %d on page %d, skipping page and continuing cycle", resp.StatusCode, pageNum)
+		return pageFetchSkipPage
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -285,8 +310,8 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 			return pageFetchContinue
 		}
 
-		log.Printf("[PRICES] Non-retriable status %d on page %d, ending cycle to avoid runaway paging", resp.StatusCode, pageNum)
-		return pageFetchAbortCycle
+		log.Printf("[PRICES] Non-retriable status %d on page %d, skipping page and continuing cycle", resp.StatusCode, pageNum)
+		return pageFetchSkipPage
 	}
 
 	body, err := io.ReadAll(resp.Body)
