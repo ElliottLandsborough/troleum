@@ -37,6 +37,12 @@ let pendingFollowMeLocationRequest = false;
 let selectedStationMarkerId = null;
 const GOOGLE_MAPS_MAP_ID = '570b6285826fd5d96eb33627';
 const MAP_THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)';
+const UK_AUTOCOMPLETE_BOUNDS = {
+    north: 61.2,
+    south: 49.8,
+    west: -8.8,
+    east: 2.1,
+};
 const GEOLOCATE_TIMEOUT_MS = 30000;
 const GEOLOCATION_REQUEST_OPTIONS = {
     enableHighAccuracy: true,
@@ -213,6 +219,15 @@ function createMapInstance(viewState = null) {
     }
 }
 
+function applyAutocompleteRestriction(targetAutocomplete) {
+    if (!targetAutocomplete) {
+        return;
+    }
+
+    targetAutocomplete.includedRegionCodes = ['gb'];
+    targetAutocomplete.locationRestriction = UK_AUTOCOMPLETE_BOUNDS;
+}
+
 function buildLocationMarkerOptions(position, title, zIndex, color, markerShape = 'pin') {
     return {
         position,
@@ -265,8 +280,8 @@ function rebuildMapForThemeChange() {
         map.addListener('idle', requestStationsForCurrentView);
     }
 
-    if (placesAutocomplete && map.getBounds()) {
-        placesAutocomplete.locationRestriction = map.getBounds();
+    if (placesAutocomplete) {
+        applyAutocompleteRestriction(placesAutocomplete);
     }
 
     if (previousSearchPosition) {
@@ -279,7 +294,7 @@ function rebuildMapForThemeChange() {
                 'Search Location',
                 999999,
                 MARKER_COLOR_DEFAULT,
-                'pin',
+                'circle',
             ));
             markersById.set('search-location', rebuiltSearchMarker);
 
@@ -1334,7 +1349,7 @@ function initMap() {
     placeAutocomplete.id = 'location-input';
     placeAutocomplete.setAttribute('placeholder', 'Enter a location');
     placeAutocomplete.setAttribute('aria-label', 'Enter a location');
-    placeAutocomplete.includedRegionCodes = ['gb'];
+    applyAutocompleteRestriction(placeAutocomplete);
 
     if (legacyInput?.parentNode) {
         legacyInput.parentNode.replaceChild(placeAutocomplete, legacyInput);
@@ -1342,16 +1357,6 @@ function initMap() {
 
     placesAutocomplete = placeAutocomplete;
     locationInputElement = placeAutocomplete;
-
-    if (map.getBounds()) {
-        placeAutocomplete.locationRestriction = map.getBounds();
-    }
-
-    map.addListener('bounds_changed', () => {
-        if (map.getBounds()) {
-            placeAutocomplete.locationRestriction = map.getBounds();
-        }
-    });
 
     placeAutocomplete.addEventListener('gmp-select', async event => {
         const placePrediction = event.placePrediction || event.detail?.placePrediction;
@@ -1387,7 +1392,7 @@ function initMap() {
                 'Search Location',
                 USER_MARKER_Z_INDEX,
                 MARKER_COLOR_CHEAPEST,
-                'pin',
+                'circle',
             ));
             markersById.set('search-location', searchMarker);
 
@@ -1402,6 +1407,8 @@ function initMap() {
             });
         } else {
             const searchMarker = markersById.get('search-location');
+            searchMarker.__markerShape = 'circle';
+            setMarkerColor(searchMarker, MARKER_COLOR_CHEAPEST);
             setMarkerPosition(searchMarker, { lat, lng });
             setMarkerVisible(searchMarker, true);
         }
