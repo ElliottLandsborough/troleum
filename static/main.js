@@ -28,6 +28,7 @@ let isFollowingMyLocation = true;
 let pendingFollowMeLocationRequest = false;
 let selectedStationMarkerId = null;
 const GOOGLE_MAPS_MAP_ID = '570b6285826fd5d96eb33627';
+const MAP_THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)';
 const GEOLOCATE_TIMEOUT_MS = 30000;
 const GEOLOCATION_REQUEST_OPTIONS = {
     enableHighAccuracy: true,
@@ -55,6 +56,37 @@ const INFO_PANEL_MOBILE_BREAKPOINT = 900;
 let isInfoPanelOpen = true;
 let isLocatingUser = false;
 let locatingUserTimeoutId = null;
+
+const MAP_DARK_STYLE_FALLBACK = [
+    { elementType: 'geometry', stylers: [{ color: '#1f2630' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#b7c3d0' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#1f2630' }] },
+    { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#3d4a59' }] },
+    { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#2a333f' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2f3a47' }] },
+    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3b4b5c' }] },
+    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2a313a' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f2b45' }] },
+];
+
+function applyMapThemeFromSystem() {
+    if (!map) {
+        return;
+    }
+
+    const prefersDark = window.matchMedia(MAP_THEME_MEDIA_QUERY).matches;
+    const colorScheme = google?.maps?.ColorScheme;
+
+    if (colorScheme) {
+        map.setOptions({
+            colorScheme: prefersDark ? colorScheme.DARK : colorScheme.LIGHT,
+            styles: null,
+        });
+        return;
+    }
+
+    map.setOptions({ styles: prefersDark ? MAP_DARK_STYLE_FALLBACK : null });
+}
 
 function applyLocateButtonState() {
     const btn = document.getElementById('my-location');
@@ -895,8 +927,17 @@ function initMap() {
         mapId: GOOGLE_MAPS_MAP_ID,
         mapTypeControl: true,
         streetViewControl: false,
+        colorScheme: google?.maps?.ColorScheme?.FOLLOW_SYSTEM,
         //renderingType: RenderingType.VECTOR,
     });
+
+    const themeMediaQuery = window.matchMedia(MAP_THEME_MEDIA_QUERY);
+    if (typeof themeMediaQuery.addEventListener === 'function') {
+        themeMediaQuery.addEventListener('change', applyMapThemeFromSystem);
+    } else if (typeof themeMediaQuery.addListener === 'function') {
+        themeMediaQuery.addListener(applyMapThemeFromSystem);
+    }
+    applyMapThemeFromSystem();
 
     initDirections().catch(err => {
         console.error('Failed to initialize Routes API:', err);
