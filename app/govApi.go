@@ -61,8 +61,8 @@ const (
 )
 
 var (
-	dynamicMaxPagesMutex      sync.RWMutex
-	pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+	dynamicMaxPagesMutex        sync.RWMutex
+	pricesMaxPagesPerCycleCap   = defaultMaxPagesPerCycle
 	stationsMaxPagesPerCycleCap = defaultMaxPagesPerCycle
 )
 
