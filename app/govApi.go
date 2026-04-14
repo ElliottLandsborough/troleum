@@ -153,11 +153,11 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusUnauthorized {
+	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 		return resp, nil
 	}
 
-	log.Printf("[AUTH] Received 401 for %s %s, forcing token refresh and retrying once", req.Method, req.URL.String())
+	log.Printf("[AUTH] Received %d for %s %s, forcing token refresh and retrying once", resp.StatusCode, req.Method, req.URL.String())
 	resp.Body.Close()
 
 	refreshedToken, refreshErr := c.getValidTokenWithForce(true)
@@ -318,8 +318,9 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[STATIONS] API returned status %d for page %d", resp.StatusCode, pageNum)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
 		resp.Body.Close()
+		log.Printf("[STATIONS] API returned status %d for page %d: %s", resp.StatusCode, pageNum, strings.TrimSpace(string(body)))
 
 		if resp.StatusCode == http.StatusNotFound {
 			log.Printf("[STATIONS] Page %d returned 404, treating as last page", pageNum)
@@ -402,8 +403,9 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[PRICES] API returned status %d for page %d", resp.StatusCode, pageNum)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
 		resp.Body.Close()
+		log.Printf("[PRICES] API returned status %d for page %d: %s", resp.StatusCode, pageNum, strings.TrimSpace(string(body)))
 
 		if resp.StatusCode == http.StatusNotFound {
 			log.Printf("[PRICES] Page %d returned 404, treating as last page", pageNum)
