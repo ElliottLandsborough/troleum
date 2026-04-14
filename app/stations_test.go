@@ -194,3 +194,135 @@ func TestContinuousFetchStationsAbortRetriesSamePage(t *testing.T) {
 		t.Fatalf("expected pages [1 2 2], got %v", seenPages)
 	}
 }
+
+func TestContinuousFetchStationsCancelDuringAbortWait(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastStationsCycleComplete = time.Time{}
+
+	seenPages := make([]int, 0, 1)
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchAbortCycle
+	}
+	stationsAbortCycleWait = func(time.Duration) <-chan time.Time {
+		return make(chan time.Time)
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	go cancel()
+	continuousFetchStations(ctx, nil, r)
+
+	if len(seenPages) != 1 || seenPages[0] != 1 {
+		t.Fatalf("expected one aborted fetch attempt on page 1, got %v", seenPages)
+	}
+}
+
+func TestContinuousFetchStationsEndsCycleAfterConsecutiveSkippedPages(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastStationsCycleComplete = time.Time{}
+	waitCalled := false
+	stationsCycleWait = func(time.Duration) <-chan time.Time {
+		waitCalled = true
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 4)
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchSkipPage
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchStations(ctx, nil, r)
+
+	if len(seenPages) != 3 {
+		t.Fatalf("expected 3 page fetch attempts before cycle reset, got %v", seenPages)
+	}
+	if seenPages[0] != 1 || seenPages[1] != 2 || seenPages[2] != 3 {
+		t.Fatalf("expected skipped pages [1 2 3] before reset, got %v", seenPages)
+	}
+	if !waitCalled {
+		t.Fatal("expected cycle wait to be invoked after reset")
+	}
+}
+
+func TestContinuousFetchStationsEndsCycleAtSafetyCapAfterContinue(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	dynamicMaxPagesMutex.RLock()
+	originalStationsCap := stationsMaxPagesPerCycleCap
+	dynamicMaxPagesMutex.RUnlock()
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+		dynamicMaxPagesMutex.Lock()
+		stationsMaxPagesPerCycleCap = originalStationsCap
+		dynamicMaxPagesMutex.Unlock()
+	})
+
+	dynamicMaxPagesMutex.Lock()
+	stationsMaxPagesPerCycleCap = 2
+	dynamicMaxPagesMutex.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastStationsCycleComplete = time.Time{}
+	waitCalled := false
+	stationsCycleWait = func(time.Duration) <-chan time.Time {
+		waitCalled = true
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 3)
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchContinue
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchStations(ctx, nil, r)
+
+	if len(seenPages) != 2 || seenPages[0] != 1 || seenPages[1] != 2 {
+		t.Fatalf("expected pages [1 2] before safety-cap reset, got %v", seenPages)
+	}
+	if !waitCalled {
+		t.Fatal("expected cycle wait after safety-cap reset")
+	}
+}

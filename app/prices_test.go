@@ -298,3 +298,142 @@ func TestContinuousFetchPricesEndsCycleAfterConsecutiveSkippedPages(t *testing.T
 		t.Fatal("expected cycle wait to be invoked after reset")
 	}
 }
+
+func TestContinuousFetchPricesCancelDuringAbortWait(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastPricesCycleComplete = time.Time{}
+
+	seenPages := make([]int, 0, 1)
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchAbortCycle
+	}
+	pricesAbortCycleWait = func(time.Duration) <-chan time.Time {
+		return make(chan time.Time)
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	go cancel()
+	continuousFetchPrices(ctx, nil, r)
+
+	if len(seenPages) != 1 || seenPages[0] != 1 {
+		t.Fatalf("expected one aborted fetch attempt on page 1, got %v", seenPages)
+	}
+}
+
+func TestContinuousFetchPricesEndsCycleAtSafetyCapAfterSkip(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	dynamicMaxPagesMutex.RLock()
+	originalPricesCap := pricesMaxPagesPerCycleCap
+	dynamicMaxPagesMutex.RUnlock()
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+		dynamicMaxPagesMutex.Lock()
+		pricesMaxPagesPerCycleCap = originalPricesCap
+		dynamicMaxPagesMutex.Unlock()
+	})
+
+	dynamicMaxPagesMutex.Lock()
+	pricesMaxPagesPerCycleCap = 2
+	dynamicMaxPagesMutex.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastPricesCycleComplete = time.Time{}
+	waitCalled := false
+	pricesCycleWait = func(time.Duration) <-chan time.Time {
+		waitCalled = true
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 3)
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchSkipPage
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchPrices(ctx, nil, r)
+
+	if len(seenPages) != 2 || seenPages[0] != 1 || seenPages[1] != 2 {
+		t.Fatalf("expected pages [1 2] before safety-cap reset on skips, got %v", seenPages)
+	}
+	if !waitCalled {
+		t.Fatal("expected cycle wait after safety-cap reset")
+	}
+}
+
+func TestContinuousFetchPricesEndsCycleAtSafetyCapAfterContinue(t *testing.T) {
+	originalWait := pricesCycleWait
+	originalAbortWait := pricesAbortCycleWait
+	originalFetch := fetchPricesPageForCycle
+	originalLast := lastPricesCycleComplete
+	dynamicMaxPagesMutex.RLock()
+	originalPricesCap := pricesMaxPagesPerCycleCap
+	dynamicMaxPagesMutex.RUnlock()
+	t.Cleanup(func() {
+		pricesCycleWait = originalWait
+		pricesAbortCycleWait = originalAbortWait
+		fetchPricesPageForCycle = originalFetch
+		lastPricesCycleComplete = originalLast
+		dynamicMaxPagesMutex.Lock()
+		pricesMaxPagesPerCycleCap = originalPricesCap
+		dynamicMaxPagesMutex.Unlock()
+	})
+
+	dynamicMaxPagesMutex.Lock()
+	pricesMaxPagesPerCycleCap = 2
+	dynamicMaxPagesMutex.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastPricesCycleComplete = time.Time{}
+	waitCalled := false
+	pricesCycleWait = func(time.Duration) <-chan time.Time {
+		waitCalled = true
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 3)
+	fetchPricesPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchContinue
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchPrices(ctx, nil, r)
+
+	if len(seenPages) != 2 || seenPages[0] != 1 || seenPages[1] != 2 {
+		t.Fatalf("expected pages [1 2] before safety-cap reset on continue, got %v", seenPages)
+	}
+	if !waitCalled {
+		t.Fatal("expected cycle wait after safety-cap reset")
+	}
+}

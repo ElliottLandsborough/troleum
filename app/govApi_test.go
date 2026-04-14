@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -444,4 +446,169 @@ func TestFetchPricesPageStatusAndBodyBehavior(t *testing.T) {
 			t.Fatalf("expected continue when node_id count meets threshold, got %v", got)
 		}
 	})
+}
+
+func TestComputeAbortBackoff(t *testing.T) {
+	base := 5 * time.Minute
+	max := time.Hour
+
+	tests := []struct {
+		name        string
+		attempts    int
+		wantBackoff time.Duration
+	}{
+		{name: "first attempt uses base delay", attempts: 1, wantBackoff: 5 * time.Minute},
+		{name: "second attempt doubles delay", attempts: 2, wantBackoff: 10 * time.Minute},
+		{name: "third attempt doubles again", attempts: 3, wantBackoff: 20 * time.Minute},
+		{name: "large attempts cap at max", attempts: 10, wantBackoff: time.Hour},
+		{name: "non-positive attempts use base", attempts: 0, wantBackoff: 5 * time.Minute},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := computeAbortBackoff(base, max, tt.attempts); got != tt.wantBackoff {
+				t.Fatalf("computeAbortBackoff(%v, %v, %d) = %v, want %v", base, max, tt.attempts, got, tt.wantBackoff)
+			}
+		})
+	}
+}
+
+func TestStartGovAPIStatsLoggerGuardClauses(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startGovAPIStatsLogger(ctx, nil, time.Second)
+	startGovAPIStatsLogger(ctx, NewOAuthClient("https://example.test/token", "id", "secret", "scope"), 0)
+}
+
+func TestStartGovAPIStatsLoggerEmitsRateLog(t *testing.T) {
+	var buf bytes.Buffer
+	originalOut := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() {
+		log.SetOutput(originalOut)
+	})
+
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client.statsMu.Lock()
+	client.statsStartedAt = time.Now().Add(-2 * time.Minute)
+	client.statsTotalRequests = 12
+	client.stats2xxCount = 10
+	client.stats4xxCount = 1
+	client.stats5xxCount = 1
+	client.statsInFlight = 1
+	client.statsPeakInFlight = 2
+	client.statsMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	startGovAPIStatsLogger(ctx, client, 5*time.Millisecond)
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), "[RATE] Gov API usage over last") {
+			cancel()
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	t.Fatal("expected stats logger to emit at least one rate log line")
+}
+
+func TestOAuthClientDoRetriesOnUnauthorized(t *testing.T) {
+	resourceHits := 0
+	authHeaders := make([]string, 0, 2)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse form failed: %v", err)
+			}
+			if r.Form.Get("grant_type") != "refresh_token" {
+				t.Fatalf("expected refresh_token grant, got %q", r.Form.Get("grant_type"))
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"data":{"access_token":"refreshed-token","token_type":"Bearer","expires_in":120,"refresh_token":"r2"}}`))
+		case "/resource":
+			resourceHits++
+			authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+			if resourceHits == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte("unauthorized"))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope")
+	client.httpClient = srv.Client()
+	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
+	client.expiresAt = time.Now().Add(time.Hour)
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/resource", nil)
+	if err != nil {
+		t.Fatalf("building request failed: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d after retry, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if resourceHits != 2 {
+		t.Fatalf("expected 2 resource calls (initial + retry), got %d", resourceHits)
+	}
+	if len(authHeaders) != 2 || authHeaders[0] != "Bearer old-token" || authHeaders[1] != "Bearer refreshed-token" {
+		t.Fatalf("unexpected authorization headers: %v", authHeaders)
+	}
+}
+
+func TestOAuthClientDoReturnsErrorWhenForcedRefreshFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("token failure"))
+		case "/resource":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("unauthorized"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope")
+	client.httpClient = srv.Client()
+	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
+	client.expiresAt = time.Now().Add(time.Hour)
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/resource", nil)
+	if err != nil {
+		t.Fatalf("building request failed: %v", err)
+	}
+
+	resp, doErr := client.Do(req)
+	if doErr == nil {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		t.Fatal("expected error when forced refresh fails")
+	}
+	if resp != nil {
+		resp.Body.Close()
+		t.Fatal("expected nil response when forced refresh fails")
+	}
 }
