@@ -174,3 +174,124 @@ func TestCollectGovAPIStatsAvailable(t *testing.T) {
 		t.Fatalf("expected ~10%% of 30 rpm limit, got %.4f", stats.PercentOf30RPMLimit)
 	}
 }
+
+func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	enrichmentTimerMutex.Lock()
+	enrichmentTimer = time.NewTimer(time.Hour)
+	enrichmentNextRunAt = now.Add(30 * time.Minute)
+	enrichmentTimerMutex.Unlock()
+
+	cycleTimeMutex.Lock()
+	lastPricesCycleComplete = now.Add(-5 * time.Minute)
+	lastStationsCycleComplete = now.Add(-70 * time.Minute)
+	cycleTimeMutex.Unlock()
+
+	dynamicMaxPagesMutex.Lock()
+	pricesMaxPagesPerCycleCap = 17
+	stationsMaxPagesPerCycleCap = 22
+	dynamicMaxPagesMutex.Unlock()
+
+	globalRetryQueue.mu.Lock()
+	globalRetryQueue.requests = []RetryRequest{{PageNum: 9, IsStations: true}}
+	globalRetryQueue.mu.Unlock()
+
+	timerStats := collectTimerStats(now)
+	if !timerStats.Enrichment.IsScheduled {
+		t.Fatal("expected enrichment timer to be scheduled")
+	}
+	if timerStats.Enrichment.SecondsUntilNextRun < 1799 || timerStats.Enrichment.SecondsUntilNextRun > 1801 {
+		t.Fatalf("expected enrichment run in ~1800s, got %d", timerStats.Enrichment.SecondsUntilNextRun)
+	}
+	if !timerStats.PricesCycleCooldown.InCooldown {
+		t.Fatal("expected prices cycle to still be in cooldown")
+	}
+	if timerStats.StationsCycleCooldown.InCooldown {
+		t.Fatal("expected stations cycle cooldown to have elapsed")
+	}
+
+	runtimeStats := collectRuntimeStats()
+	if runtimeStats.RetryQueueLength != 1 {
+		t.Fatalf("expected retry queue length 1, got %d", runtimeStats.RetryQueueLength)
+	}
+	if runtimeStats.PricesMaxPagesPerCycleCap != 17 {
+		t.Fatalf("expected prices cap 17, got %d", runtimeStats.PricesMaxPagesPerCycleCap)
+	}
+	if runtimeStats.StationsMaxPagesPerCycleCap != 22 {
+		t.Fatalf("expected stations cap 22, got %d", runtimeStats.StationsMaxPagesPerCycleCap)
+	}
+}
+
+func TestEvaluateStatsHealthOK(t *testing.T) {
+	disk := diskCacheInfo{
+		JSONFileCount:        10,
+		OldestFileAgeSeconds: int64((30 * time.Minute).Seconds()),
+	}
+	memory := memoryInfo{
+		CachedStationPagesCount:    5,
+		CachedPricePagesCount:      5,
+		OldestCachedPageAgeSeconds: int64((45 * time.Minute).Seconds()),
+	}
+	gov := govAPIInfo{
+		StatsAvailable: true,
+		TotalRequests:  100,
+		Requests4xx:    5,
+		Requests403:    1,
+		NetworkErrors:  2,
+	}
+
+	health := evaluateStatsHealth(disk, memory, gov)
+	if health.Status != "ok" {
+		t.Fatalf("expected health status ok, got %q", health.Status)
+	}
+	if len(health.Reasons) != 0 {
+		t.Fatalf("expected no health reasons, got %v", health.Reasons)
+	}
+}
+
+func TestEvaluateStatsHealthWarns(t *testing.T) {
+	disk := diskCacheInfo{
+		JSONFileCount:        0,
+		OldestFileAgeSeconds: int64((3 * time.Hour).Seconds()),
+	}
+	memory := memoryInfo{
+		CachedStationPagesCount:    0,
+		CachedPricePagesCount:      0,
+		OldestCachedPageAgeSeconds: int64((3 * time.Hour).Seconds()),
+	}
+	gov := govAPIInfo{
+		StatsAvailable: true,
+		TotalRequests:  10,
+		Requests4xx:    6,
+		Requests403:    3,
+		NetworkErrors:  2,
+	}
+
+	health := evaluateStatsHealth(disk, memory, gov)
+	if health.Status != "warn" {
+		t.Fatalf("expected health status warn, got %q", health.Status)
+	}
+
+	reasons := map[string]bool{}
+	for _, reason := range health.Reasons {
+		reasons[reason] = true
+	}
+
+	wantReasons := []string{
+		"no_json_cache_files_found",
+		"no_cached_pages_in_memory",
+		"high_403_ratio",
+		"high_4xx_ratio",
+		"high_network_error_ratio",
+	}
+
+	for _, want := range wantReasons {
+		if !reasons[want] {
+			t.Fatalf("expected health reason %q in %v", want, health.Reasons)
+		}
+	}
+}

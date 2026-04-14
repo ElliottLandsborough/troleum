@@ -82,6 +82,12 @@ func (rq *RetryQueue) HasRequests() bool {
 	return len(rq.requests) > 0
 }
 
+func (rq *RetryQueue) Len() int {
+	rq.mu.Lock()
+	defer rq.mu.Unlock()
+	return len(rq.requests)
+}
+
 func getRequestType(isStations bool) string {
 	if isStations {
 		return "STATIONS"

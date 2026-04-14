@@ -44,6 +44,7 @@ var savedPricesPagesMutex sync.Mutex
 // enrichmentTimer is a global timer that triggers the enrichment process
 var enrichmentTimer *time.Timer
 var enrichmentTimerMutex sync.Mutex
+var enrichmentNextRunAt time.Time
 
 // fuelTypesCache is a global cache of all unique fuel types available across all stations in memory, updated during enrichment
 var fuelTypesCache []string
@@ -55,6 +56,7 @@ const enrichmentInterval = 60 * time.Minute
 // Reset the enrichment timer with a new duration, ensuring thread safety
 func resetEnrichmentTimerLocked(d time.Duration) {
 	if enrichmentTimer == nil {
+		enrichmentNextRunAt = time.Time{}
 		return
 	}
 	if !enrichmentTimer.Stop() {
@@ -64,11 +66,24 @@ func resetEnrichmentTimerLocked(d time.Duration) {
 		}
 	}
 	enrichmentTimer.Reset(d)
+	enrichmentNextRunAt = time.Now().Add(d)
+}
+
+func getEnrichmentTimerSnapshot() (bool, time.Time) {
+	enrichmentTimerMutex.Lock()
+	defer enrichmentTimerMutex.Unlock()
+
+	if enrichmentTimer == nil {
+		return false, time.Time{}
+	}
+
+	return true, enrichmentNextRunAt
 }
 
 // InitEnrichmentTimer initializes the enrichment timer that triggers loading data from cached responses
 func initEnrichmentTimer(ctx context.Context) {
 	enrichmentTimer = time.NewTimer(enrichmentInterval)
+	enrichmentNextRunAt = time.Now().Add(enrichmentInterval)
 
 	go func() {
 		for {
@@ -80,6 +95,7 @@ func initEnrichmentTimer(ctx context.Context) {
 				if enrichmentTimer != nil {
 					enrichmentTimer.Stop()
 				}
+				enrichmentNextRunAt = time.Time{}
 				enrichmentTimerMutex.Unlock()
 				log.Println("[ENRICH] Enrichment worker stopped")
 				return

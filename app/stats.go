@@ -4,8 +4,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+)
+
+const (
+	statsWarnOldestJSONFileAge        = 2 * time.Hour
+	statsWarnOldestMemoryCacheAge     = 2 * time.Hour
+	statsWarn403RatioPercent          = 20.0
+	statsWarn4xxRatioPercent          = 40.0
+	statsWarnNetworkErrorRatioPercent = 10.0
 )
 
 type statsResponse struct {
@@ -15,32 +24,40 @@ type statsResponse struct {
 
 type statsData struct {
 	GeneratedAt string        `json:"generated_at"`
+	Health      healthInfo    `json:"health"`
 	DiskCache   diskCacheInfo `json:"disk_cache"`
 	Memory      memoryInfo    `json:"memory"`
 	GovAPI      govAPIInfo    `json:"gov_api"`
+	Timers      timersInfo    `json:"timers"`
+	Runtime     runtimeInfo   `json:"runtime"`
+}
+
+type healthInfo struct {
+	Status  string   `json:"status"`
+	Reasons []string `json:"reasons,omitempty"`
 }
 
 type diskCacheInfo struct {
-	JSONFileCount         int    `json:"json_file_count"`
-	OldestFileName        string `json:"oldest_file_name,omitempty"`
-	OldestFileModifiedAt  string `json:"oldest_file_modified_at,omitempty"`
-	OldestFileAgeSeconds  int64  `json:"oldest_file_age_seconds"`
-	OldestFileAgeHuman    string `json:"oldest_file_age_human"`
-	NewestFileName        string `json:"newest_file_name,omitempty"`
-	NewestFileModifiedAt  string `json:"newest_file_modified_at,omitempty"`
-	NewestFileAgeSeconds  int64  `json:"newest_file_age_seconds"`
-	NewestFileAgeHuman    string `json:"newest_file_age_human"`
+	JSONFileCount        int    `json:"json_file_count"`
+	OldestFileName       string `json:"oldest_file_name,omitempty"`
+	OldestFileModifiedAt string `json:"oldest_file_modified_at,omitempty"`
+	OldestFileAgeSeconds int64  `json:"oldest_file_age_seconds"`
+	OldestFileAgeHuman   string `json:"oldest_file_age_human"`
+	NewestFileName       string `json:"newest_file_name,omitempty"`
+	NewestFileModifiedAt string `json:"newest_file_modified_at,omitempty"`
+	NewestFileAgeSeconds int64  `json:"newest_file_age_seconds"`
+	NewestFileAgeHuman   string `json:"newest_file_age_human"`
 }
 
 type memoryInfo struct {
-	StationsCount              int   `json:"stations_count"`
-	PriceStationsCount         int   `json:"price_stations_count"`
-	StationPriceEntriesCount   int   `json:"station_price_entries_count"`
-	StationLocationsCount      int   `json:"station_locations_count"`
-	FuelTypesCachedCount       int   `json:"fuel_types_cached_count"`
-	CachedStationPagesCount    int   `json:"cached_station_pages_count"`
-	CachedPricePagesCount      int   `json:"cached_price_pages_count"`
-	OldestCachedPageAgeSeconds int64 `json:"oldest_cached_page_age_seconds"`
+	StationsCount              int    `json:"stations_count"`
+	PriceStationsCount         int    `json:"price_stations_count"`
+	StationPriceEntriesCount   int    `json:"station_price_entries_count"`
+	StationLocationsCount      int    `json:"station_locations_count"`
+	FuelTypesCachedCount       int    `json:"fuel_types_cached_count"`
+	CachedStationPagesCount    int    `json:"cached_station_pages_count"`
+	CachedPricePagesCount      int    `json:"cached_price_pages_count"`
+	OldestCachedPageAgeSeconds int64  `json:"oldest_cached_page_age_seconds"`
 	OldestCachedPageAgeHuman   string `json:"oldest_cached_page_age_human"`
 }
 
@@ -60,19 +77,53 @@ type govAPIInfo struct {
 	PercentOf30RPMLimit  float64 `json:"percent_of_30_rpm_limit"`
 }
 
+type timersInfo struct {
+	Enrichment            scheduledTimerInfo `json:"enrichment"`
+	PricesCycleCooldown   cooldownInfo       `json:"prices_cycle_cooldown"`
+	StationsCycleCooldown cooldownInfo       `json:"stations_cycle_cooldown"`
+}
+
+type scheduledTimerInfo struct {
+	IsScheduled         bool   `json:"is_scheduled"`
+	NextRunAt           string `json:"next_run_at,omitempty"`
+	SecondsUntilNextRun int64  `json:"seconds_until_next_run"`
+	HumanUntilNextRun   string `json:"human_until_next_run"`
+}
+
+type cooldownInfo struct {
+	LastCompletedAt             string `json:"last_completed_at,omitempty"`
+	CooldownDurationSeconds     int64  `json:"cooldown_duration_seconds"`
+	InCooldown                  bool   `json:"in_cooldown"`
+	NextEligibleRunAt           string `json:"next_eligible_run_at,omitempty"`
+	SecondsUntilNextEligibleRun int64  `json:"seconds_until_next_eligible_run"`
+	HumanUntilNextEligibleRun   string `json:"human_until_next_eligible_run"`
+}
+
+type runtimeInfo struct {
+	RetryQueueLength            int `json:"retry_queue_length"`
+	PricesMaxPagesPerCycleCap   int `json:"prices_max_pages_per_cycle_cap"`
+	StationsMaxPagesPerCycleCap int `json:"stations_max_pages_per_cycle_cap"`
+}
+
 func statsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	disk := collectDiskCacheStats(now)
 	memory := collectMemoryStats(now)
 	gov := collectGovAPIStats(now)
+	timers := collectTimerStats(now)
+	runtime := collectRuntimeStats()
+	health := evaluateStatsHealth(disk, memory, gov)
 
 	response := statsResponse{
 		Code: http.StatusOK,
 		Data: statsData{
 			GeneratedAt: now.UTC().Format(time.RFC3339),
+			Health:      health,
 			DiskCache:   disk,
 			Memory:      memory,
 			GovAPI:      gov,
+			Timers:      timers,
+			Runtime:     runtime,
 		},
 	}
 
@@ -236,4 +287,109 @@ func collectGovAPIStats(now time.Time) govAPIInfo {
 		AvgRequestsPerMinute: avgRPM,
 		PercentOf30RPMLimit:  percent,
 	}
+}
+
+func collectTimerStats(now time.Time) timersInfo {
+	enrichmentScheduled, enrichmentNext := getEnrichmentTimerSnapshot()
+
+	cycleTimeMutex.RLock()
+	lastPrices := lastPricesCycleComplete
+	lastStations := lastStationsCycleComplete
+	cycleTimeMutex.RUnlock()
+
+	return timersInfo{
+		Enrichment:            buildScheduledTimerInfo(enrichmentScheduled, enrichmentNext, now),
+		PricesCycleCooldown:   buildCooldownInfo(lastPrices, 15*time.Minute, now),
+		StationsCycleCooldown: buildCooldownInfo(lastStations, time.Hour, now),
+	}
+}
+
+func buildScheduledTimerInfo(isScheduled bool, nextRunAt time.Time, now time.Time) scheduledTimerInfo {
+	if !isScheduled || nextRunAt.IsZero() {
+		return scheduledTimerInfo{IsScheduled: false}
+	}
+
+	remaining := nextRunAt.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	return scheduledTimerInfo{
+		IsScheduled:         true,
+		NextRunAt:           nextRunAt.UTC().Format(time.RFC3339),
+		SecondsUntilNextRun: int64(remaining.Seconds()),
+		HumanUntilNextRun:   remaining.Round(time.Second).String(),
+	}
+}
+
+func buildCooldownInfo(lastCompletedAt time.Time, cooldown time.Duration, now time.Time) cooldownInfo {
+	if lastCompletedAt.IsZero() {
+		return cooldownInfo{CooldownDurationSeconds: int64(cooldown.Seconds())}
+	}
+
+	nextEligible := lastCompletedAt.Add(cooldown)
+	remaining := nextEligible.Sub(now)
+	inCooldown := remaining > 0
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	return cooldownInfo{
+		LastCompletedAt:             lastCompletedAt.UTC().Format(time.RFC3339),
+		CooldownDurationSeconds:     int64(cooldown.Seconds()),
+		InCooldown:                  inCooldown,
+		NextEligibleRunAt:           nextEligible.UTC().Format(time.RFC3339),
+		SecondsUntilNextEligibleRun: int64(remaining.Seconds()),
+		HumanUntilNextEligibleRun:   remaining.Round(time.Second).String(),
+	}
+}
+
+func collectRuntimeStats() runtimeInfo {
+	return runtimeInfo{
+		RetryQueueLength:            globalRetryQueue.Len(),
+		PricesMaxPagesPerCycleCap:   getDynamicMaxPagesPerCycle(false),
+		StationsMaxPagesPerCycleCap: getDynamicMaxPagesPerCycle(true),
+	}
+}
+
+func evaluateStatsHealth(disk diskCacheInfo, memory memoryInfo, gov govAPIInfo) healthInfo {
+	reasons := make([]string, 0)
+
+	if disk.JSONFileCount == 0 {
+		reasons = append(reasons, "no_json_cache_files_found")
+	} else if time.Duration(disk.OldestFileAgeSeconds)*time.Second > statsWarnOldestJSONFileAge {
+		reasons = append(reasons, "oldest_json_file_is_stale")
+	}
+
+	if memory.CachedStationPagesCount+memory.CachedPricePagesCount == 0 {
+		reasons = append(reasons, "no_cached_pages_in_memory")
+	} else if time.Duration(memory.OldestCachedPageAgeSeconds)*time.Second > statsWarnOldestMemoryCacheAge {
+		reasons = append(reasons, "oldest_cached_page_in_memory_is_stale")
+	}
+
+	if !gov.StatsAvailable {
+		reasons = append(reasons, "gov_api_stats_unavailable")
+	} else if gov.TotalRequests > 0 {
+		requestTotal := float64(gov.TotalRequests)
+		forbiddenRatio := float64(gov.Requests403) / requestTotal * 100
+		clientErrorRatio := float64(gov.Requests4xx) / requestTotal * 100
+		networkErrorRatio := float64(gov.NetworkErrors) / requestTotal * 100
+
+		if forbiddenRatio >= statsWarn403RatioPercent {
+			reasons = append(reasons, "high_403_ratio")
+		}
+		if clientErrorRatio >= statsWarn4xxRatioPercent {
+			reasons = append(reasons, "high_4xx_ratio")
+		}
+		if networkErrorRatio >= statsWarnNetworkErrorRatioPercent {
+			reasons = append(reasons, "high_network_error_ratio")
+		}
+	}
+
+	if len(reasons) == 0 {
+		return healthInfo{Status: "ok"}
+	}
+
+	sort.Strings(reasons)
+	return healthInfo{Status: "warn", Reasons: reasons}
 }

@@ -116,7 +116,10 @@ func resetGlobalMemoryStateForTest() {
 
 	enrichmentTimerMutex.Lock()
 	enrichmentTimer = nil
+	enrichmentNextRunAt = time.Time{}
 	enrichmentTimerMutex.Unlock()
+
+	setActiveOAuthClient(nil)
 
 	dynamicMaxPagesMutex.Lock()
 	pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
