@@ -23,6 +23,7 @@ COPY app/nodebug.go /app/
 COPY app/prices.go /app/
 COPY app/queue.go /app/
 COPY app/stations.go /app/
+COPY app/stats.go /app/
 COPY app/webHandlers.go /app/
 COPY app/webServer.go /app/
 
