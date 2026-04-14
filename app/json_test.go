@@ -196,27 +196,16 @@ func TestLoadDataFromJSONFilesUnreadableFiles(t *testing.T) {
 		t.Fatalf("mkdir json dir: %v", err)
 	}
 
+	// Broken symlinks are stable cross-permission setups: ReadFile always fails.
 	stationPath := filepath.Join(jsonDir, "stations_page_2.json")
-	if err := os.WriteFile(stationPath, []byte(testStationPageJSON), 0o600); err != nil {
-		t.Fatalf("write stations page: %v", err)
+	if err := os.Symlink(filepath.Join(jsonDir, "missing_stations_target.json"), stationPath); err != nil {
+		t.Fatalf("create broken stations symlink: %v", err)
 	}
-	if err := os.Chmod(stationPath, 0); err != nil {
-		t.Fatalf("chmod stations page: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chmod(stationPath, 0o600)
-	})
 
 	pricePath := filepath.Join(jsonDir, "prices_page_2.json")
-	if err := os.WriteFile(pricePath, []byte(testPricePageJSON), 0o600); err != nil {
-		t.Fatalf("write prices page: %v", err)
+	if err := os.Symlink(filepath.Join(jsonDir, "missing_prices_target.json"), pricePath); err != nil {
+		t.Fatalf("create broken prices symlink: %v", err)
 	}
-	if err := os.Chmod(pricePath, 0); err != nil {
-		t.Fatalf("chmod prices page: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chmod(pricePath, 0o600)
-	})
 
 	loadDataFromJSONFiles()
 
