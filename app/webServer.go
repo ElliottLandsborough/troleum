@@ -192,25 +192,25 @@ func StartWebServer(ctx context.Context) *http.Server {
 
 	// Start server in goroutine
 	go func() {
-		log.Println("Starting web server on :8080")
+		log.Println("[WEB] Starting web server on :8080")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Web server error: %v", err)
+			log.Printf("[WEB] Web server error: %v", err)
 		}
 	}()
 
 	// Wait for context cancellation
 	go func() {
 		<-ctx.Done()
-		log.Println("Shutting down web server gracefully...")
+		log.Println("[WEB] Shutting down web server gracefully...")
 
 		// Create shutdown context with 30 second timeout
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Web server shutdown error: %v", err)
+			log.Printf("[WEB] Web server shutdown error: %v", err)
 		} else {
-			log.Println("Web server stopped gracefully")
+			log.Println("[WEB] Web server stopped gracefully")
 		}
 	}()
 
