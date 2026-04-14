@@ -355,13 +355,24 @@ body.info-closed #info {
         width: 100%;
         border-left: none;
         border-top: 1px solid var(--panel-border);
+        height: calc(100dvh - 64px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
     }
 
     body.mobile-layout.info-open {
-        overflow: hidden;
+        overflow-y: auto;
     }
 
     body.mobile-layout.info-open #info {
         display: block;
+    }
+
+    #info #location-list {
+        overflow-y: visible;
+        -webkit-overflow-scrolling: auto;
+        touch-action: pan-y;
     }
 }
