@@ -126,7 +126,7 @@ func validateBboxRange(minLat, minLng, maxLat, maxLng float64) error {
 func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate query parameters size
 	if err := validateQueryParameters(r); err != nil {
-		log.Printf("Query validation error: %v", err)
+		log.Printf("[WEB] Query validation error: %v", err)
 		http.Error(w, "Bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -138,9 +138,9 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fuelType != "" {
-		log.Printf("Filtering stations by fuel type: %s", fuelType)
+		log.Printf("[WEB] Filtering stations by fuel type: %s", fuelType)
 	} else {
-		log.Printf("No fuel type filter applied, returning all stations")
+		log.Printf("[WEB] No fuel type filter applied, returning all stations")
 	}
 
 	lat := r.URL.Query().Get("lat")
@@ -165,7 +165,7 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	copy(stationsToBeReturned, stations)
 	stationsMutex.Unlock()
 
-	log.Printf("Received request for stations with fuel type '%s' and location (%s, %s)", fuelType, lat, lng)
+	log.Printf("[WEB] Received request for stations with fuel type '%s' and location (%s, %s)", fuelType, lat, lng)
 
 	fuelTypes := getCachedFuelTypes()
 	// if fuelType matches any of the cached fuel types, log it
@@ -174,29 +174,29 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		for _, ft := range fuelTypes {
 			if ft == fuelType {
 				stationsToBeReturned = filterStationsByFuelType(stationsToBeReturned, fuelType)
-				log.Printf("Found %d stations with fuel type %s", len(stationsToBeReturned), fuelType)
+				log.Printf("[WEB] Found %d stations with fuel type %s", len(stationsToBeReturned), fuelType)
 				foundStationsWithFuelType = true
 				break
 			}
 		}
 		if foundStationsWithFuelType {
-			log.Printf("Requested fuel type %s is available in cached fuel types", fuelType)
+			log.Printf("[WEB] Requested fuel type %s is available in cached fuel types", fuelType)
 		} else {
-			log.Printf("Requested fuel type %s is NOT available in cached fuel types", fuelType)
+			log.Printf("[WEB] Requested fuel type %s is NOT available in cached fuel types", fuelType)
 		}
 	}
 
 	if lat != "" && lng != "" {
-		log.Printf("Received location parameters: lat=%s, lng=%s", lat, lng)
+		log.Printf("[WEB] Received location parameters: lat=%s, lng=%s", lat, lng)
 	} else {
-		log.Printf("No location parameters provided")
+		log.Printf("[WEB] No location parameters provided")
 	}
 
 	// If bounding box parameters provided, filter stations to those within the bounding box
 	bbox := r.URL.Query().Get("bbox")
 	if bbox != "" {
 		bboxProvided = true
-		log.Printf("Received bounding box parameter: %s", bbox)
+		log.Printf("[WEB] Received bounding box parameter: %s", bbox)
 		parts := strings.Split(bbox, ",")
 		if len(parts) != 4 {
 			http.Error(w, "Invalid bbox parameter. Use format: minLat,minLng,maxLat,maxLng", http.StatusBadRequest)
@@ -217,12 +217,12 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		stationsToBeReturned = filterStationsByBoundingBox(stationsToBeReturned, minLat, minLng, maxLat, maxLng)
-		log.Printf("Filtered stations to %d within bounding box", len(stationsToBeReturned))
+		log.Printf("[WEB] Filtered stations to %d within bounding box", len(stationsToBeReturned))
 	}
 
 	// If lat/lng provided, sort stations by distance to that location, otherwise return in order received from API/database
 	if lat != "" && lng != "" {
-		log.Printf("Sorting stations by distance to provided location (%s, %s)", lat, lng)
+		log.Printf("[WEB] Sorting stations by distance to provided location (%s, %s)", lat, lng)
 		// Convert lat/lng to float64
 		latFloat, err1 := strconv.ParseFloat(lat, 64)
 		lngFloat, err2 := strconv.ParseFloat(lng, 64)
@@ -242,7 +242,7 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 
 		stationsToBeReturned = StationsByDistance(stationsToBeReturned, latFloat, lngFloat)
 
-		log.Printf("Sorted stations by distance to location (%s, %s)", lat, lng)
+		log.Printf("[WEB] Sorted stations by distance to location (%s, %s)", lat, lng)
 
 		for i := range stationsToBeReturned {
 			s := &stationsToBeReturned[i]
@@ -251,19 +251,19 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 			// convert distance to miles, rounded to 2 decimal places. Pad with zeros if necessary to always show 2 decimal places
 			s.Distance = math.Round(distance*0.621371*100) / 100
 		}
-		log.Printf("Calculated distance for each station from location (%s, %s)", lat, lng)
+		log.Printf("[WEB] Calculated distance for each station from location (%s, %s)", lat, lng)
 
 	} else {
-		log.Printf("No location provided, returning stations in original order")
+		log.Printf("[WEB] No location provided, returning stations in original order")
 	}
 
 	// If there are more than 100 stations to be returned, limit the response to 100 stations.
 	if len(stationsToBeReturned) > 100 {
 		if bboxProvided {
-			log.Printf("More than 100 stations in bbox (%d), selecting 100 stations with spatial spread and cheaper-price preference", len(stationsToBeReturned))
+			log.Printf("[WEB] More than 100 stations in bbox (%d), selecting 100 stations with spatial spread and cheaper-price preference", len(stationsToBeReturned))
 			stationsToBeReturned = selectStationsForBoundingBox(stationsToBeReturned, 100, minLat, minLng, maxLat, maxLng)
 		} else {
-			log.Printf("More than 100 stations to be returned (%d), selecting the first 100 stations", len(stationsToBeReturned))
+			log.Printf("[WEB] More than 100 stations to be returned (%d), selecting the first 100 stations", len(stationsToBeReturned))
 			stationsToBeReturned = selectFirstStations(stationsToBeReturned, 100)
 		}
 	}

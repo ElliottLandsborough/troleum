@@ -48,14 +48,14 @@ func loadUKBoundary() {
 		}
 	}
 	if loadedPath == "" {
-		log.Printf("WARNING: Could not load OSM UK boundary file from any known path: %v", err)
+		log.Printf("[GEO] WARNING: Could not load OSM UK boundary file from any known path: %v", err)
 		ukPolygonLoaded = true
 		return
 	}
 
 	var polygons [][][]float64
 	if err := json.Unmarshal(data, &polygons); err != nil {
-		log.Printf("WARNING: Could not parse OSM UK boundary JSON: %v", err)
+		log.Printf("[GEO] WARNING: Could not parse OSM UK boundary JSON: %v", err)
 		ukPolygonLoaded = true
 		return
 	}
@@ -74,13 +74,13 @@ func loadUKBoundary() {
 	}
 
 	if len(loadedPolygons) == 0 {
-		log.Printf("WARNING: OSM UK boundary JSON did not contain any usable polygons")
+		log.Printf("[GEO] WARNING: OSM UK boundary JSON did not contain any usable polygons")
 		ukPolygonLoaded = true
 		return
 	}
 
 	ukGeofencePolygons = loadedPolygons
-	log.Printf("LOADED OSM UK boundary with %d polygons from %s", len(ukGeofencePolygons), loadedPath)
+	log.Printf("[GEO] Loaded OSM UK boundary with %d polygons from %s", len(ukGeofencePolygons), loadedPath)
 	ukPolygonLoaded = true
 }
 

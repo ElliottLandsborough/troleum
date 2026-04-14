@@ -100,19 +100,19 @@ func main() {
 	go mainRetryWorker(ctx, client, rateLimiter)
 
 	// Keep main running and allow for other code
-	log.Println("Started continuous data fetching...")
-	log.Println("Press Ctrl+C or send SIGTERM to gracefully shut down")
+	log.Println("[MAIN] Started continuous data fetching...")
+	log.Println("[MAIN] Press Ctrl+C or send SIGTERM to gracefully shut down")
 
 	// Wait for shutdown signal
 	<-stop
-	log.Println("\nReceived shutdown signal, initiating graceful shutdown...")
+	log.Println("[MAIN] Received shutdown signal, initiating graceful shutdown...")
 
 	// Cancel context to signal all goroutines to stop
 	cancel()
 
 	// Give goroutines time to clean up (web server has its own 30s timeout)
-	log.Println("Waiting for background workers to finish...")
+	log.Println("[MAIN] Waiting for background workers to finish...")
 	mainSleep(2 * time.Second)
 
-	log.Println("Shutdown complete")
+	log.Println("[MAIN] Shutdown complete")
 }
