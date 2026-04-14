@@ -117,6 +117,11 @@ func resetGlobalMemoryStateForTest() {
 	enrichmentTimerMutex.Lock()
 	enrichmentTimer = nil
 	enrichmentTimerMutex.Unlock()
+
+	dynamicMaxPagesMutex.Lock()
+	pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+	stationsMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+	dynamicMaxPagesMutex.Unlock()
 }
 
 func TestPriceStationGetNodeID(t *testing.T) {

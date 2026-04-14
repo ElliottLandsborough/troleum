@@ -51,11 +51,54 @@ type OAuthClient struct {
 type pageFetchResult int
 
 const (
+	defaultMaxPagesPerCycle = 200
+	learnedMaxPagesBuffer   = 3
+
 	pageFetchContinue pageFetchResult = iota
 	pageFetchFinalPage
 	pageFetchSkipPage
 	pageFetchAbortCycle
 )
+
+var (
+	dynamicMaxPagesMutex      sync.RWMutex
+	pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+	stationsMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+)
+
+func getDynamicMaxPagesPerCycle(isStations bool) int {
+	dynamicMaxPagesMutex.RLock()
+	defer dynamicMaxPagesMutex.RUnlock()
+
+	if isStations {
+		return stationsMaxPagesPerCycleCap
+	}
+
+	return pricesMaxPagesPerCycleCap
+}
+
+func setDynamicMaxPagesFromTerminalPage(isStations bool, terminalPage int) {
+	if terminalPage < 1 {
+		return
+	}
+
+	learnedCap := terminalPage + learnedMaxPagesBuffer
+
+	dynamicMaxPagesMutex.Lock()
+	if isStations {
+		stationsMaxPagesPerCycleCap = learnedCap
+	} else {
+		pricesMaxPagesPerCycleCap = learnedCap
+	}
+	dynamicMaxPagesMutex.Unlock()
+
+	if isStations {
+		log.Printf("[STATIONS] Learned dynamic safety cap from terminal page %d: max pages now %d", terminalPage, learnedCap)
+		return
+	}
+
+	log.Printf("[PRICES] Learned dynamic safety cap from terminal page %d: max pages now %d", terminalPage, learnedCap)
+}
 
 func computeAbortBackoff(baseDelay, maxDelay time.Duration, consecutiveAttempts int) time.Duration {
 	if consecutiveAttempts <= 1 {
@@ -247,6 +290,7 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
 		log.Printf("[STATIONS] Page %d contains no node_id occurrences, treating as last page", pageNum)
+		setDynamicMaxPagesFromTerminalPage(true, pageNum)
 		return pageFetchFinalPage
 	}
 
@@ -265,6 +309,7 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
 	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[STATIONS] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
+		setDynamicMaxPagesFromTerminalPage(true, pageNum)
 		return pageFetchFinalPage
 	}
 
@@ -329,6 +374,7 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
 		log.Printf("[PRICES] Page %d contains no node_id occurrences, treating as last page", pageNum)
+		setDynamicMaxPagesFromTerminalPage(false, pageNum)
 		return pageFetchFinalPage
 	}
 
@@ -347,6 +393,7 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
 	if nodeIdCount < NodeIDCountThreshold {
 		log.Printf("[PRICES] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
+		setDynamicMaxPagesFromTerminalPage(false, pageNum)
 		return pageFetchFinalPage
 	}
 

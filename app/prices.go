@@ -13,7 +13,6 @@ var fetchPricesPageForCycle = fetchPricesPage
 
 const pricesAbortCycleBackoff = 2 * time.Minute
 const pricesAbortCycleMaxBackoff = 15 * time.Minute
-const pricesMaxPagesPerCycle = 200
 const pricesMaxConsecutiveSkippedPages = 3
 
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint
@@ -238,7 +237,8 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 			}
 
 			currentPage++
-			if currentPage > pricesMaxPagesPerCycle {
+			maxPagesThisCycle := getDynamicMaxPagesPerCycle(false)
+			if currentPage > maxPagesThisCycle {
 				cycleDuration := time.Since(cycleStartTime)
 				now := time.Now()
 
@@ -246,7 +246,7 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 				lastPricesCycleComplete = now
 				cycleTimeMutex.Unlock()
 
-				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", pricesMaxPagesPerCycle, cycleDuration)
+				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", maxPagesThisCycle, cycleDuration)
 				currentPage = 1
 				consecutiveSkippedPages = 0
 			}
@@ -257,7 +257,8 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 			consecutiveCycleAborts = 0
 			consecutiveSkippedPages = 0
 			currentPage++
-			if currentPage > pricesMaxPagesPerCycle {
+			maxPagesThisCycle := getDynamicMaxPagesPerCycle(false)
+			if currentPage > maxPagesThisCycle {
 				cycleDuration := time.Since(cycleStartTime)
 				now := time.Now()
 
@@ -265,7 +266,7 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 				lastPricesCycleComplete = now
 				cycleTimeMutex.Unlock()
 
-				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", pricesMaxPagesPerCycle, cycleDuration)
+				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", maxPagesThisCycle, cycleDuration)
 				currentPage = 1
 			}
 		}

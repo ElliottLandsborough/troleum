@@ -39,6 +39,33 @@ func TestIsRetriableStatusCode(t *testing.T) {
 	}
 }
 
+func TestDynamicMaxPagesLearning(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	if got := getDynamicMaxPagesPerCycle(false); got != defaultMaxPagesPerCycle {
+		t.Fatalf("expected default prices max pages %d, got %d", defaultMaxPagesPerCycle, got)
+	}
+	if got := getDynamicMaxPagesPerCycle(true); got != defaultMaxPagesPerCycle {
+		t.Fatalf("expected default stations max pages %d, got %d", defaultMaxPagesPerCycle, got)
+	}
+
+	setDynamicMaxPagesFromTerminalPage(false, 10)
+	if got := getDynamicMaxPagesPerCycle(false); got != 13 {
+		t.Fatalf("expected learned prices max pages 13, got %d", got)
+	}
+
+	setDynamicMaxPagesFromTerminalPage(true, 12)
+	if got := getDynamicMaxPagesPerCycle(true); got != 15 {
+		t.Fatalf("expected learned stations max pages 15, got %d", got)
+	}
+
+	setDynamicMaxPagesFromTerminalPage(false, 0)
+	if got := getDynamicMaxPagesPerCycle(false); got != 13 {
+		t.Fatalf("expected prices max pages unchanged at 13 for invalid terminal page, got %d", got)
+	}
+}
+
 func TestNewOAuthClientDefaults(t *testing.T) {
 	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
 	if client == nil {

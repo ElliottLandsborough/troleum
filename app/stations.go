@@ -14,7 +14,6 @@ var fetchStationsPageForCycle = fetchStationsPage
 
 const stationsAbortCycleBackoff = 5 * time.Minute
 const stationsAbortCycleMaxBackoff = time.Hour
-const stationsMaxPagesPerCycle = 200
 const stationsMaxConsecutiveSkippedPages = 3
 
 type Station struct {
@@ -164,7 +163,8 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 			}
 
 			currentPage++
-			if currentPage > stationsMaxPagesPerCycle {
+			maxPagesThisCycle := getDynamicMaxPagesPerCycle(true)
+			if currentPage > maxPagesThisCycle {
 				cycleDuration := time.Since(cycleStartTime)
 				now := time.Now()
 
@@ -172,7 +172,7 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 				lastStationsCycleComplete = now
 				cycleTimeMutex.Unlock()
 
-				log.Printf("[STATIONS] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", stationsMaxPagesPerCycle, cycleDuration)
+				log.Printf("[STATIONS] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", maxPagesThisCycle, cycleDuration)
 				currentPage = 1
 				consecutiveSkippedPages = 0
 			}
@@ -183,7 +183,8 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 			consecutiveCycleAborts = 0
 			consecutiveSkippedPages = 0
 			currentPage++
-			if currentPage > stationsMaxPagesPerCycle {
+			maxPagesThisCycle := getDynamicMaxPagesPerCycle(true)
+			if currentPage > maxPagesThisCycle {
 				cycleDuration := time.Since(cycleStartTime)
 				now := time.Now()
 
@@ -191,7 +192,7 @@ func continuousFetchStations(ctx context.Context, client *OAuthClient, rateLimit
 				lastStationsCycleComplete = now
 				cycleTimeMutex.Unlock()
 
-				log.Printf("[STATIONS] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", stationsMaxPagesPerCycle, cycleDuration)
+				log.Printf("[STATIONS] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", maxPagesThisCycle, cycleDuration)
 				currentPage = 1
 			}
 		}
