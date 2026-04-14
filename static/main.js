@@ -4,6 +4,7 @@ let fuelTypesPromise = null;
 let latestPins = null;
 let markersById = new Map();
 let infoWindowsById = new Map();
+let stationSnapshotsById = new Map();
 let debounceTimer = null;
 let abortController = null;
 let userLat = null;
@@ -1494,6 +1495,7 @@ function renderPins(pins) {
 
     pinList.forEach(pin => {
         const id = String(pin.id);
+        stationSnapshotsById.set(id, pin);
         const sortedPrices = getSortedPrices(pin.prices);
         const stationName = pin?.name || 'Unnamed Station';
         const safeStationName = escapeHtml(stationName);
@@ -1569,15 +1571,22 @@ function renderStationInfo(pins) {
     const infoDiv = document.getElementById('location-list');
     const pinList = Array.isArray(pins?.data) ? pins.data : [];
     const sortedPinList = getSortedPinsForSelection(pinList);
+    const selectedSnapshot = selectedStationMarkerId ? stationSnapshotsById.get(selectedStationMarkerId) : null;
+    const selectedInView = selectedStationMarkerId
+        ? sortedPinList.some(pin => String(pin.id) === selectedStationMarkerId)
+        : false;
+    const pinsForInfoList = selectedSnapshot && !selectedInView
+        ? [selectedSnapshot, ...sortedPinList]
+        : sortedPinList;
     const selectedFuelType = getSelectedFuelSortValue();
     const isDistanceSelected = selectedFuelType == null;
 
-    if (sortedPinList.length === 0) {
+    if (pinsForInfoList.length === 0) {
         infoDiv.innerHTML = '<div class="location-list-item">No stations found in this area.</div>';
         return;
     }
 
-    const stationInfoHtml = sortedPinList.map(pin => {
+    const stationInfoHtml = pinsForInfoList.map(pin => {
         const sortedPrices = getSortedPrices(pin.prices);
         const safeStationName = escapeHtml(pin?.name || 'Unnamed Station');
 
