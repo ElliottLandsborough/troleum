@@ -48,6 +48,8 @@ type OAuthClient struct {
 	mu        sync.Mutex
 }
 
+const tokenEarlyRefreshWindow = 10 * time.Minute
+
 type pageFetchResult int
 
 const (
@@ -139,26 +141,64 @@ func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient
 func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 	log.Printf("[AUTH] Preparing authenticated request: %s %s", req.Method, req.URL.String())
 
-	token, err := c.getValidToken()
+	token, err := c.getValidTokenWithForce(false)
 	if err != nil {
 		log.Printf("[AUTH] Failed to get valid token for request %s %s: %v", req.Method, req.URL.String(), err)
 		return nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
 
-	return c.httpClient.Do(req)
+	if resp.StatusCode != http.StatusUnauthorized {
+		return resp, nil
+	}
+
+	log.Printf("[AUTH] Received 401 for %s %s, forcing token refresh and retrying once", req.Method, req.URL.String())
+	resp.Body.Close()
+
+	refreshedToken, refreshErr := c.getValidTokenWithForce(true)
+	if refreshErr != nil {
+		log.Printf("[AUTH] Forced refresh after 401 failed for %s %s: %v", req.Method, req.URL.String(), refreshErr)
+		return nil, refreshErr
+	}
+
+	retryReq := req.Clone(req.Context())
+	retryReq.Header.Set("Authorization", "Bearer "+refreshedToken)
+
+	retryResp, retryErr := c.httpClient.Do(retryReq)
+	if retryErr != nil {
+		log.Printf("[AUTH] Retry after forced refresh failed for %s %s: %v", req.Method, req.URL.String(), retryErr)
+		return nil, retryErr
+	}
+
+	if retryResp.StatusCode == http.StatusUnauthorized {
+		log.Printf("[AUTH] Retry after forced refresh still returned 401 for %s %s", req.Method, req.URL.String())
+	}
+
+	return retryResp, nil
 }
 
 // Get a valid token (cached + refresh-safe)
 func (c *OAuthClient) getValidToken() (string, error) {
+	return c.getValidTokenWithForce(false)
+}
+
+func (c *OAuthClient) getValidTokenWithForce(forceRefresh bool) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// If token exists and is not close to expiring, reuse it
-	if c.token != nil && time.Now().Before(c.expiresAt.Add(-30*time.Second)) {
+	if !forceRefresh && c.token != nil && time.Now().Before(c.expiresAt.Add(-tokenEarlyRefreshWindow)) {
 		log.Printf("[AUTH] Reusing cached access token (expires in %v)", time.Until(c.expiresAt).Round(time.Second))
 		return c.token.AccessToken, nil
+	}
+
+	if forceRefresh {
+		log.Printf("[AUTH] Forced token refresh requested")
 	}
 
 	if c.token != nil && c.token.RefreshToken != "" {

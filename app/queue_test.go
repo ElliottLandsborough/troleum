@@ -20,7 +20,7 @@ func testOAuthClientWithRoundTripper(rt http.RoundTripper) *OAuthClient {
 	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
 	client.httpClient = &http.Client{Transport: rt}
 	client.token = &TokenData{AccessToken: "cached-token"}
-	client.expiresAt = time.Now().Add(2 * time.Minute)
+	client.expiresAt = time.Now().Add(2 * time.Hour)
 	return client
 }
 

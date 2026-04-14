@@ -93,7 +93,7 @@ func TestOAuthClientDoUsesCachedToken(t *testing.T) {
 	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
 	client.httpClient = srv.Client()
 	client.token = &TokenData{AccessToken: "cached-token"}
-	client.expiresAt = time.Now().Add(2 * time.Minute)
+	client.expiresAt = time.Now().Add(2 * time.Hour)
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
 	if err != nil {
