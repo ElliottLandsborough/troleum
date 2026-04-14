@@ -137,8 +137,11 @@ func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient
 
 // Public API call helper (auto-refreshes)
 func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
+	log.Printf("[AUTH] Preparing authenticated request: %s %s", req.Method, req.URL.String())
+
 	token, err := c.getValidToken()
 	if err != nil {
+		log.Printf("[AUTH] Failed to get valid token for request %s %s: %v", req.Method, req.URL.String(), err)
 		return nil, err
 	}
 
@@ -154,19 +157,26 @@ func (c *OAuthClient) getValidToken() (string, error) {
 
 	// If token exists and is not close to expiring, reuse it
 	if c.token != nil && time.Now().Before(c.expiresAt.Add(-30*time.Second)) {
+		log.Printf("[AUTH] Reusing cached access token (expires in %v)", time.Until(c.expiresAt).Round(time.Second))
 		return c.token.AccessToken, nil
 	}
 
 	if c.token != nil && c.token.RefreshToken != "" {
+		log.Printf("[AUTH] Access token expired/expiring, attempting refresh token flow")
 		if err := c.refreshToken(); err == nil {
+			log.Printf("[AUTH] Refresh token flow succeeded")
 			return c.token.AccessToken, nil
 		}
+		log.Printf("[AUTH] Refresh token flow failed, falling back to client credentials flow")
 	}
 
 	// Fallback to client credentials flow
+	log.Printf("[AUTH] Requesting new access token via client credentials flow")
 	if err := c.fetchToken(); err != nil {
+		log.Printf("[AUTH] Client credentials token request failed: %v", err)
 		return "", err
 	}
+	log.Printf("[AUTH] Client credentials token request succeeded")
 
 	return c.token.AccessToken, nil
 }
@@ -195,12 +205,19 @@ func (c *OAuthClient) refreshToken() error {
 
 // Shared token request logic
 func (c *OAuthClient) requestToken(form url.Values) error {
+	grantType := form.Get("grant_type")
+	if grantType == "" {
+		grantType = "unknown"
+	}
+	log.Printf("[AUTH] Requesting token from token endpoint using grant_type=%s", grantType)
+
 	req, err := http.NewRequest(
 		http.MethodPost,
 		c.tokenURL,
 		bytes.NewBufferString(form.Encode()),
 	)
 	if err != nil {
+		log.Printf("[AUTH] Failed to build token request (grant_type=%s): %v", grantType, err)
 		return err
 	}
 
@@ -208,26 +225,31 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		log.Printf("[AUTH] Token endpoint request failed (grant_type=%s): %v", grantType, err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[AUTH] Token endpoint returned non-200 status=%d (grant_type=%s)", resp.StatusCode, grantType)
 		return fmt.Errorf("token request failed: %s", body)
 	}
 
 	var envelope TokenEnvelope
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		log.Printf("[AUTH] Failed to decode token response JSON (grant_type=%s): %v", grantType, err)
 		return err
 	}
 
 	if !envelope.Success {
+		log.Printf("[AUTH] Token endpoint returned success=false (grant_type=%s): %s", grantType, envelope.Message)
 		return fmt.Errorf("token error: %s", envelope.Message)
 	}
 
 	c.token = &envelope.Data
 	c.expiresAt = time.Now().Add(time.Duration(c.token.ExpiresIn) * time.Second)
+	log.Printf("[AUTH] Token updated (grant_type=%s, expires in %v, has_refresh_token=%t)", grantType, time.Until(c.expiresAt).Round(time.Second), c.token.RefreshToken != "")
 
 	return nil
 }
