@@ -137,16 +137,18 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lat := r.URL.Query().Get("lat")
+	lng := r.URL.Query().Get("lng")
+	bboxProvided := false
+	var minLat, minLng, maxLat, maxLng float64
+
+	log.Printf("[WEB] Received request for stations with fuel type '%s' and location (%s, %s)", fuelType, lat, lng)
+
 	if fuelType != "" {
 		log.Printf("[WEB] Filtering stations by fuel type: %s", fuelType)
 	} else {
 		log.Printf("[WEB] No fuel type filter applied, returning all stations")
 	}
-
-	lat := r.URL.Query().Get("lat")
-	lng := r.URL.Query().Get("lng")
-	bboxProvided := false
-	var minLat, minLng, maxLat, maxLng float64
 
 	// only allow 0-9, dot and minus in lat/lng (only one decimal point allowed)
 	latLngPattern := regexp.MustCompile(`^-?\d+(\.\d+)?$`)
@@ -164,8 +166,6 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	stationsToBeReturned := make([]Station, len(stations))
 	copy(stationsToBeReturned, stations)
 	stationsMutex.Unlock()
-
-	log.Printf("[WEB] Received request for stations with fuel type '%s' and location (%s, %s)", fuelType, lat, lng)
 
 	fuelTypes := getCachedFuelTypes()
 	// if fuelType matches any of the cached fuel types, log it
@@ -242,7 +242,7 @@ func stationsAPIHandler(w http.ResponseWriter, r *http.Request) {
 
 		stationsToBeReturned = StationsByDistance(stationsToBeReturned, latFloat, lngFloat)
 
-		log.Printf("[WEB] Sorted stations by distance to location (%s, %s)", lat, lng)
+		log.Printf("[WEB] Sorted stations by distance to provided location (%s, %s)", lat, lng)
 
 		for i := range stationsToBeReturned {
 			s := &stationsToBeReturned[i]

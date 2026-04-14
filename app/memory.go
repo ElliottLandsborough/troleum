@@ -109,7 +109,7 @@ func triggerEnrichmentWithReset() {
 // StoreJSONPageInMemory saves the raw JSON string of a page into the appropriate in-memory map for later enrichment
 func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestType, nodeIdCount int) {
 	if nodeIdCount == 0 {
-		log.Printf("[CACHE] ERROR: No node_id occurrences in current page %d of type %s, skipping caching in memory.", pageNum, requestType)
+		log.Printf("[CACHE] ERROR: No node_id occurrences in current page %d of type %s, skipping caching in memory", pageNum, requestType)
 		return
 	}
 
@@ -249,7 +249,7 @@ func loadDataFromAllCachedPageResponses() {
 func removeMissingStations() {
 	nodeIds := make([]string, 0)
 
-	log.Printf("[CLEANUP] Collecting node IDs from cached station pages to identify which stations are still active.")
+	log.Printf("[CLEANUP] Collecting node IDs from cached station pages to identify which stations are still active")
 
 	// Snapshot the station pages while locked to avoid race conditions.
 	savedStationsPagesMutex.Lock()
