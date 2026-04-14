@@ -91,7 +91,27 @@ var (
 	dynamicMaxPagesMutex        sync.RWMutex
 	pricesMaxPagesPerCycleCap   = defaultMaxPagesPerCycle
 	stationsMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+	activeOAuthClientMu         sync.RWMutex
+	activeOAuthClient           *OAuthClient
 )
+
+func setActiveOAuthClient(client *OAuthClient) {
+	activeOAuthClientMu.Lock()
+	activeOAuthClient = client
+	activeOAuthClientMu.Unlock()
+}
+
+func getGovAPIStatsSnapshot() (govAPIStatsSnapshot, bool) {
+	activeOAuthClientMu.RLock()
+	client := activeOAuthClient
+	activeOAuthClientMu.RUnlock()
+
+	if client == nil {
+		return govAPIStatsSnapshot{}, false
+	}
+
+	return client.snapshotGovAPIStats(), true
+}
 
 func getDynamicMaxPagesPerCycle(isStations bool) int {
 	dynamicMaxPagesMutex.RLock()

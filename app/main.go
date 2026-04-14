@@ -82,6 +82,7 @@ func main() {
 		cfg.ClientSecret,
 		"fuelfinder.read",
 	)
+	setActiveOAuthClient(client)
 	mainStartGovAPIStatsLogger(ctx, client, GovAPIStatsLogInterval)
 
 	// Create rate limiter (3 requests per minute = 1 request every 20 seconds)

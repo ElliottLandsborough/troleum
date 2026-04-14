@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -253,6 +254,50 @@ func TestSetupWebServer(t *testing.T) {
 	}
 	if got := w.Header().Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
 		t.Fatalf("expected Cross-Origin-Opener-Policy same-origin on api route, got %q", got)
+	}
+
+	statsClient := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	setActiveOAuthClient(statsClient)
+	statsClient.statsMu.Lock()
+	statsClient.statsStartedAt = time.Now().Add(-10 * time.Minute)
+	statsClient.statsTotalRequests = 20
+	statsClient.stats2xxCount = 12
+	statsClient.stats4xxCount = 6
+	statsClient.stats5xxCount = 2
+	statsClient.stats401Count = 1
+	statsClient.stats403Count = 3
+	statsClient.statsPeakInFlight = 1
+	statsClient.statsMu.Unlock()
+
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/stats", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from stats api route, got %d", w.Code)
+	}
+
+	var statsPayload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &statsPayload); err != nil {
+		t.Fatalf("stats endpoint should return valid JSON: %v", err)
+	}
+
+	dataAny, ok := statsPayload["data"]
+	if !ok {
+		t.Fatalf("expected data object in stats payload")
+	}
+
+	data, ok := dataAny.(map[string]any)
+	if !ok {
+		t.Fatalf("expected data to be JSON object")
+	}
+
+	if _, ok := data["disk_cache"]; !ok {
+		t.Fatalf("expected disk_cache section in stats payload")
+	}
+	if _, ok := data["memory"]; !ok {
+		t.Fatalf("expected memory section in stats payload")
+	}
+	if _, ok := data["gov_api"]; !ok {
+		t.Fatalf("expected gov_api section in stats payload")
 	}
 
 	w = httptest.NewRecorder()

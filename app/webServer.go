@@ -154,6 +154,9 @@ func setupWebServer() *http.Server {
 	// Get the current cached fuel type list.
 	mux.Handle("/api/fuel-types", noStore(http.HandlerFunc(fuelTypesAPIHandler)))
 
+	// Get operational stats about cache freshness, memory state, and Gov API usage.
+	mux.Handle("/api/stats", noStore(http.HandlerFunc(statsAPIHandler)))
+
 	// ----------------------
 	// Root (index.html)
 	// ----------------------
