@@ -18,6 +18,7 @@ const (
 	RequestTypePricesPage   RequestType = "prices_page"
 	JSONPreviewLength                   = 100 // Limit for previewing JSON data in logs and database
 	NodeIDCountThreshold                = 500 // Threshold for considering a page to be 'full' of data
+	GovAPIStatsLogInterval              = 5 * time.Minute
 )
 
 var (
@@ -32,6 +33,7 @@ var (
 	mainLoadConfig                      = LoadConfig
 	mainStartWebServer                  = StartWebServer
 	mainNewOAuthClient                  = NewOAuthClient
+	mainStartGovAPIStatsLogger          = startGovAPIStatsLogger
 	mainNewTicker                       = time.NewTicker
 	mainContinuousFetchStations         = continuousFetchStations
 	mainContinuousFetchPrices           = continuousFetchPrices
@@ -80,6 +82,7 @@ func main() {
 		cfg.ClientSecret,
 		"fuelfinder.read",
 	)
+	mainStartGovAPIStatsLogger(ctx, client, GovAPIStatsLogInterval)
 
 	// Create rate limiter (3 requests per minute = 1 request every 20 seconds)
 	rateLimiter := mainNewTicker(20 * time.Second)

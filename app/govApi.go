@@ -46,11 +46,36 @@ type OAuthClient struct {
 	token     *TokenData
 	expiresAt time.Time
 	mu        sync.Mutex
+
+	statsMu            sync.Mutex
+	statsStartedAt     time.Time
+	statsTotalRequests int
+	stats2xxCount      int
+	stats4xxCount      int
+	stats5xxCount      int
+	statsNetworkErrors int
+	stats401Count      int
+	stats403Count      int
+	statsInFlight      int
+	statsPeakInFlight  int
 }
 
 const tokenEarlyRefreshWindow = 10 * time.Minute
 
 type pageFetchResult int
+
+type govAPIStatsSnapshot struct {
+	StartedAt     time.Time
+	TotalRequests int
+	Status2xx     int
+	Status4xx     int
+	Status5xx     int
+	NetworkErrors int
+	Status401     int
+	Status403     int
+	InFlight      int
+	PeakInFlight  int
+}
 
 const (
 	defaultMaxPagesPerCycle = 200
@@ -129,12 +154,138 @@ func computeAbortBackoff(baseDelay, maxDelay time.Duration, consecutiveAttempts 
 // Constructor
 func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient {
 	return &OAuthClient{
-		httpClient:   &http.Client{Timeout: 120 * time.Second},
-		tokenURL:     tokenURL,
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		scope:        scope,
+		httpClient:     &http.Client{Timeout: 120 * time.Second},
+		tokenURL:       tokenURL,
+		clientID:       clientID,
+		clientSecret:   clientSecret,
+		scope:          scope,
+		statsStartedAt: time.Now(),
 	}
+}
+
+func (c *OAuthClient) recordGovAPIRequestStart() {
+	c.statsMu.Lock()
+	defer c.statsMu.Unlock()
+
+	if c.statsStartedAt.IsZero() {
+		c.statsStartedAt = time.Now()
+	}
+
+	c.statsTotalRequests++
+	c.statsInFlight++
+	if c.statsInFlight > c.statsPeakInFlight {
+		c.statsPeakInFlight = c.statsInFlight
+	}
+}
+
+func (c *OAuthClient) recordGovAPIRequestResult(statusCode int, err error) {
+	c.statsMu.Lock()
+	defer c.statsMu.Unlock()
+
+	if c.statsInFlight > 0 {
+		c.statsInFlight--
+	}
+
+	if err != nil {
+		c.statsNetworkErrors++
+		return
+	}
+
+	switch {
+	case statusCode >= 200 && statusCode <= 299:
+		c.stats2xxCount++
+	case statusCode >= 400 && statusCode <= 499:
+		c.stats4xxCount++
+	case statusCode >= 500 && statusCode <= 599:
+		c.stats5xxCount++
+	}
+
+	if statusCode == http.StatusUnauthorized {
+		c.stats401Count++
+	}
+	if statusCode == http.StatusForbidden {
+		c.stats403Count++
+	}
+}
+
+func (c *OAuthClient) snapshotGovAPIStats() govAPIStatsSnapshot {
+	c.statsMu.Lock()
+	defer c.statsMu.Unlock()
+
+	return govAPIStatsSnapshot{
+		StartedAt:     c.statsStartedAt,
+		TotalRequests: c.statsTotalRequests,
+		Status2xx:     c.stats2xxCount,
+		Status4xx:     c.stats4xxCount,
+		Status5xx:     c.stats5xxCount,
+		NetworkErrors: c.statsNetworkErrors,
+		Status401:     c.stats401Count,
+		Status403:     c.stats403Count,
+		InFlight:      c.statsInFlight,
+		PeakInFlight:  c.statsPeakInFlight,
+	}
+}
+
+func startGovAPIStatsLogger(ctx context.Context, client *OAuthClient, interval time.Duration) {
+	if client == nil || interval <= 0 {
+		return
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		lastLogAt := time.Now()
+		lastTotal := 0
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				snapshot := client.snapshotGovAPIStats()
+				now := time.Now()
+
+				intervalDuration := now.Sub(lastLogAt)
+				intervalRequests := snapshot.TotalRequests - lastTotal
+				intervalRPM := 0.0
+				if intervalDuration > 0 {
+					intervalRPM = float64(intervalRequests) / intervalDuration.Minutes()
+				}
+
+				lifetimeDuration := now.Sub(snapshot.StartedAt)
+				lifetimeRPM := 0.0
+				if lifetimeDuration > 0 {
+					lifetimeRPM = float64(snapshot.TotalRequests) / lifetimeDuration.Minutes()
+				}
+
+				percentOfLimit := (intervalRPM / 30.0) * 100.0
+				if percentOfLimit < 0 {
+					percentOfLimit = 0
+				}
+
+				log.Printf(
+					"[RATE] Gov API usage over last %v: %d request(s), avg %.2f req/min (%.1f%% of 30 req/min limit), lifetime avg %.2f req/min, in_flight=%d peak_in_flight=%d, responses 2xx=%d 4xx=%d 5xx=%d net_err=%d 401=%d 403=%d",
+					intervalDuration.Round(time.Second),
+					intervalRequests,
+					intervalRPM,
+					percentOfLimit,
+					lifetimeRPM,
+					snapshot.InFlight,
+					snapshot.PeakInFlight,
+					snapshot.Status2xx,
+					snapshot.Status4xx,
+					snapshot.Status5xx,
+					snapshot.NetworkErrors,
+					snapshot.Status401,
+					snapshot.Status403,
+				)
+
+				lastLogAt = now
+				lastTotal = snapshot.TotalRequests
+			}
+		}
+	}()
 }
 
 // Public API call helper (auto-refreshes)
@@ -148,10 +299,13 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
+	c.recordGovAPIRequestStart()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.recordGovAPIRequestResult(0, err)
 		return nil, err
 	}
+	c.recordGovAPIRequestResult(resp.StatusCode, nil)
 
 	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 		return resp, nil
@@ -169,11 +323,14 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 	retryReq := req.Clone(req.Context())
 	retryReq.Header.Set("Authorization", "Bearer "+refreshedToken)
 
+	c.recordGovAPIRequestStart()
 	retryResp, retryErr := c.httpClient.Do(retryReq)
 	if retryErr != nil {
+		c.recordGovAPIRequestResult(0, retryErr)
 		log.Printf("[AUTH] Retry after forced refresh failed for %s %s: %v", req.Method, req.URL.String(), retryErr)
 		return nil, retryErr
 	}
+	c.recordGovAPIRequestResult(retryResp.StatusCode, nil)
 
 	if retryResp.StatusCode == http.StatusUnauthorized {
 		log.Printf("[AUTH] Retry after forced refresh still returned 401 for %s %s", req.Method, req.URL.String())
@@ -263,11 +420,14 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
+	c.recordGovAPIRequestStart()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.recordGovAPIRequestResult(0, err)
 		log.Printf("[AUTH] Token endpoint request failed (grant_type=%s): %v", grantType, err)
 		return err
 	}
+	c.recordGovAPIRequestResult(resp.StatusCode, nil)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

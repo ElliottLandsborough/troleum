@@ -21,6 +21,7 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 	origLoadConfig := mainLoadConfig
 	origStartWebServer := mainStartWebServer
 	origNewOAuthClient := mainNewOAuthClient
+	origStartGovAPIStatsLogger := mainStartGovAPIStatsLogger
 	origNewTicker := mainNewTicker
 	origContinuousFetchStations := mainContinuousFetchStations
 	origContinuousFetchPrices := mainContinuousFetchPrices
@@ -40,6 +41,7 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 		mainLoadConfig = origLoadConfig
 		mainStartWebServer = origStartWebServer
 		mainNewOAuthClient = origNewOAuthClient
+		mainStartGovAPIStatsLogger = origStartGovAPIStatsLogger
 		mainNewTicker = origNewTicker
 		mainContinuousFetchStations = origContinuousFetchStations
 		mainContinuousFetchPrices = origContinuousFetchPrices
@@ -64,6 +66,7 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 	}
 	mainStartWebServer = func(context.Context) *http.Server { return nil }
 	mainNewOAuthClient = func(string, string, string, string) *OAuthClient { return &OAuthClient{} }
+	mainStartGovAPIStatsLogger = func(context.Context, *OAuthClient, time.Duration) {}
 	mainNewTicker = func(time.Duration) *time.Ticker { return time.NewTicker(1 * time.Millisecond) }
 	mainContinuousFetchStations = func(context.Context, *OAuthClient, *time.Ticker) {}
 	mainContinuousFetchPrices = func(context.Context, *OAuthClient, *time.Ticker) {}
