@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -377,6 +379,47 @@ func TestStartWebServerReturnsServerAndHandlesCancel(t *testing.T) {
 		t.Fatal("expected server instance")
 	}
 
+	cancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer shutdownCancel()
+	_ = srv.Shutdown(shutdownCtx)
+}
+
+func TestRequestSchemeBranches(t *testing.T) {
+	t.Run("uses first forwarded proto value", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://example.test", nil)
+		req.Header.Set("X-Forwarded-Proto", " https ,http")
+		if got := requestScheme(req); got != "https" {
+			t.Fatalf("expected https from forwarded proto, got %q", got)
+		}
+	})
+
+	t.Run("falls back to tls when forwarded proto first value empty", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://example.test", nil)
+		req.Header.Set("X-Forwarded-Proto", " ,http")
+		req.TLS = &tls.ConnectionState{}
+		if got := requestScheme(req); got != "https" {
+			t.Fatalf("expected https from tls fallback, got %q", got)
+		}
+	})
+}
+
+func TestStartWebServerHandlesListenErrorPath(t *testing.T) {
+	ln, err := net.Listen("tcp", "0.0.0.0:8080")
+	if err != nil {
+		t.Skipf("could not reserve test port 8080: %v", err)
+	}
+	defer ln.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := StartWebServer(ctx)
+	if srv == nil {
+		cancel()
+		t.Fatal("expected server instance")
+	}
+
+	time.Sleep(20 * time.Millisecond)
 	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)

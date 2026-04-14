@@ -72,6 +72,11 @@ func TestFlexFloatUnmarshalJSON(t *testing.T) {
 	if err := invalid.UnmarshalJSON([]byte(`"not-a-number"`)); err == nil {
 		t.Fatal("expected error for invalid string float")
 	}
+
+	var wrongType FlexFloat
+	if err := wrongType.UnmarshalJSON([]byte(`{"value":1}`)); err == nil {
+		t.Fatal("expected error when value is neither number nor string")
+	}
 }
 
 func TestProcessJSONArray(t *testing.T) {
@@ -120,6 +125,18 @@ func TestSavePageJSON(t *testing.T) {
 	}
 }
 
+func TestSavePageJSONDirectoryCreationFailure(t *testing.T) {
+	withTempWorkingDir(t)
+
+	if err := os.WriteFile("json", []byte("not-a-directory"), 0o600); err != nil {
+		t.Fatalf("failed to create blocking file: %v", err)
+	}
+
+	if _, err := savePageJSON(`[{"ok":true}]`, 1, "prices"); err == nil {
+		t.Fatal("expected savePageJSON to fail when json path is a file")
+	}
+}
+
 func TestLoadDataFromJSONFiles(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)
@@ -137,6 +154,12 @@ func TestLoadDataFromJSONFiles(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(jsonDir, "stations_page_bad.json"), []byte(testStationPageJSON), 0o600); err != nil {
 		t.Fatalf("write bad stations page: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(jsonDir, "prices_page_bad.json"), []byte(testPricePageJSON), 0o600); err != nil {
+		t.Fatalf("write bad prices page: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(jsonDir, "nested"), 0o755); err != nil {
+		t.Fatalf("write nested dir: %v", err)
 	}
 
 	loadDataFromJSONFiles()
@@ -160,6 +183,55 @@ func TestLoadDataFromJSONFiles(t *testing.T) {
 	priceStationsMutex.Unlock()
 	if priceCount != 2 {
 		t.Fatalf("expected 2 price stations loaded, got %d", priceCount)
+	}
+}
+
+func TestLoadDataFromJSONFilesUnreadableFiles(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	tempDir := withTempWorkingDir(t)
+	jsonDir := filepath.Join(tempDir, "json")
+	if err := os.MkdirAll(jsonDir, 0o755); err != nil {
+		t.Fatalf("mkdir json dir: %v", err)
+	}
+
+	stationPath := filepath.Join(jsonDir, "stations_page_2.json")
+	if err := os.WriteFile(stationPath, []byte(testStationPageJSON), 0o600); err != nil {
+		t.Fatalf("write stations page: %v", err)
+	}
+	if err := os.Chmod(stationPath, 0); err != nil {
+		t.Fatalf("chmod stations page: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(stationPath, 0o600)
+	})
+
+	pricePath := filepath.Join(jsonDir, "prices_page_2.json")
+	if err := os.WriteFile(pricePath, []byte(testPricePageJSON), 0o600); err != nil {
+		t.Fatalf("write prices page: %v", err)
+	}
+	if err := os.Chmod(pricePath, 0); err != nil {
+		t.Fatalf("chmod prices page: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(pricePath, 0o600)
+	})
+
+	loadDataFromJSONFiles()
+
+	savedStationsPagesMutex.Lock()
+	stationPages := len(savedStationsPages)
+	savedStationsPagesMutex.Unlock()
+	if stationPages != 0 {
+		t.Fatalf("expected no cached station pages from unreadable files, got %d", stationPages)
+	}
+
+	savedPricesPagesMutex.Lock()
+	pricePages := len(savedPricesPages)
+	savedPricesPagesMutex.Unlock()
+	if pricePages != 0 {
+		t.Fatalf("expected no cached price pages from unreadable files, got %d", pricePages)
 	}
 }
 

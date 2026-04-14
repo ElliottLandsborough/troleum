@@ -1,11 +1,62 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestStatsAPIHandlerSuccess(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+	withTempWorkingDir(t)
+
+	if err := os.MkdirAll("json", 0o755); err != nil {
+		t.Fatalf("mkdir json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("json", "stations_page_1.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write json file: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/stats", nil)
+	w := httptest.NewRecorder()
+
+	statsAPIHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp statsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected code %d in payload, got %d", http.StatusOK, resp.Code)
+	}
+	if resp.Data.GeneratedAt == "" {
+		t.Fatal("expected generated_at to be populated")
+	}
+}
+
+func TestStatsAPIHandlerWriteFailure(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+	withTempWorkingDir(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats", nil)
+	fw := &failingResponseWriter{}
+
+	statsAPIHandler(fw, req)
+
+	if fw.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+		t.Fatalf("expected error response content type, got %q", fw.Header().Get("Content-Type"))
+	}
+}
 
 func TestCollectDiskCacheStatsMissingDirectory(t *testing.T) {
 	withTempWorkingDir(t)
@@ -65,6 +116,22 @@ func TestCollectDiskCacheStatsWithFiles(t *testing.T) {
 	}
 	if stats.NewestFileAgeSeconds < 119 || stats.NewestFileAgeSeconds > 121 {
 		t.Fatalf("expected newest age around 120s, got %d", stats.NewestFileAgeSeconds)
+	}
+}
+
+func TestCollectDiskCacheStatsNoJSONFiles(t *testing.T) {
+	withTempWorkingDir(t)
+
+	if err := os.MkdirAll("json", 0o755); err != nil {
+		t.Fatalf("mkdir json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("json", "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write non-json file: %v", err)
+	}
+
+	stats := collectDiskCacheStats(time.Now())
+	if stats.JSONFileCount != 0 {
+		t.Fatalf("expected 0 json files, got %d", stats.JSONFileCount)
 	}
 }
 
@@ -287,6 +354,71 @@ func TestEvaluateStatsHealthWarns(t *testing.T) {
 		"high_403_ratio",
 		"high_4xx_ratio",
 		"high_network_error_ratio",
+	}
+
+	for _, want := range wantReasons {
+		if !reasons[want] {
+			t.Fatalf("expected health reason %q in %v", want, health.Reasons)
+		}
+	}
+}
+
+func TestBuildScheduledTimerInfoAndCooldownInfoEdgeCases(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+
+	notScheduled := buildScheduledTimerInfo(false, now.Add(time.Minute), now)
+	if notScheduled.IsScheduled {
+		t.Fatal("expected unscheduled timer info")
+	}
+
+	pastDue := buildScheduledTimerInfo(true, now.Add(-time.Minute), now)
+	if pastDue.SecondsUntilNextRun != 0 {
+		t.Fatalf("expected 0 seconds for past-due timer, got %d", pastDue.SecondsUntilNextRun)
+	}
+
+	zeroCooldown := buildCooldownInfo(time.Time{}, 15*time.Minute, now)
+	if zeroCooldown.CooldownDurationSeconds != int64((15 * time.Minute).Seconds()) {
+		t.Fatalf("unexpected cooldown duration seconds: %d", zeroCooldown.CooldownDurationSeconds)
+	}
+	if zeroCooldown.InCooldown {
+		t.Fatal("expected zero-time cooldown info to not be in cooldown")
+	}
+
+	pastCompleted := buildCooldownInfo(now.Add(-2*time.Hour), 15*time.Minute, now)
+	if pastCompleted.InCooldown {
+		t.Fatal("expected cooldown to be elapsed")
+	}
+	if pastCompleted.SecondsUntilNextEligibleRun != 0 {
+		t.Fatalf("expected 0 seconds remaining after elapsed cooldown, got %d", pastCompleted.SecondsUntilNextEligibleRun)
+	}
+}
+
+func TestEvaluateStatsHealthWarnsOnStaleDataAndUnavailableGovStats(t *testing.T) {
+	disk := diskCacheInfo{
+		JSONFileCount:        1,
+		OldestFileAgeSeconds: int64((3 * time.Hour).Seconds()),
+	}
+	memory := memoryInfo{
+		CachedStationPagesCount:    1,
+		CachedPricePagesCount:      0,
+		OldestCachedPageAgeSeconds: int64((3 * time.Hour).Seconds()),
+	}
+	gov := govAPIInfo{StatsAvailable: false}
+
+	health := evaluateStatsHealth(disk, memory, gov)
+	if health.Status != "warn" {
+		t.Fatalf("expected health status warn, got %q", health.Status)
+	}
+
+	reasons := map[string]bool{}
+	for _, reason := range health.Reasons {
+		reasons[reason] = true
+	}
+
+	wantReasons := []string{
+		"oldest_json_file_is_stale",
+		"oldest_cached_page_in_memory_is_stale",
+		"gov_api_stats_unavailable",
 	}
 
 	for _, want := range wantReasons {

@@ -612,3 +612,172 @@ func TestOAuthClientDoReturnsErrorWhenForcedRefreshFails(t *testing.T) {
 		t.Fatal("expected nil response when forced refresh fails")
 	}
 }
+
+func TestOAuthClientDoReturnsRetryUnauthorizedResponse(t *testing.T) {
+	resourceHits := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"data":{"access_token":"refreshed-token","token_type":"Bearer","expires_in":120,"refresh_token":"r2"}}`))
+		case "/resource":
+			resourceHits++
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("unauthorized"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope")
+	client.httpClient = srv.Client()
+	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
+	client.expiresAt = time.Now().Add(time.Hour)
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/resource", nil)
+	if err != nil {
+		t.Fatalf("building request failed: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected retry response status %d, got %d", http.StatusUnauthorized, resp.StatusCode)
+	}
+	if resourceHits != 2 {
+		t.Fatalf("expected 2 resource calls (initial + retry), got %d", resourceHits)
+	}
+}
+
+func TestOAuthClientDoReturnsErrorWhenRetryRequestFails(t *testing.T) {
+	tokenCalls := 0
+	resourceCalls := 0
+
+	client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/token"):
+			tokenCalls++
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"success":true,"data":{"access_token":"refreshed-token","token_type":"Bearer","expires_in":120,"refresh_token":"r2"}}`)),
+				Header:     make(http.Header),
+			}, nil
+		default:
+			resourceCalls++
+			if resourceCalls == 1 {
+				return &http.Response{
+					StatusCode: http.StatusUnauthorized,
+					Body:       io.NopCloser(strings.NewReader("unauthorized")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return nil, errors.New("retry transport failure")
+		}
+	}))
+	client.tokenURL = "https://example.test/token"
+	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
+	client.expiresAt = time.Now().Add(time.Hour)
+
+	req, err := http.NewRequest(http.MethodGet, "https://example.test/resource", nil)
+	if err != nil {
+		t.Fatalf("building request failed: %v", err)
+	}
+
+	resp, doErr := client.Do(req)
+	if doErr == nil {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		t.Fatal("expected retry request error")
+	}
+	if resp != nil {
+		resp.Body.Close()
+		t.Fatal("expected nil response when retry request fails")
+	}
+	if tokenCalls == 0 {
+		t.Fatal("expected forced refresh token call before retry")
+	}
+}
+
+func TestRequestTokenBuildRequestFailure(t *testing.T) {
+	client := NewOAuthClient("://bad-url", "id", "secret", "scope")
+	err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
+	if err == nil {
+		t.Fatal("expected error when request URL is invalid")
+	}
+}
+
+func TestRecordGovAPIRequestStartInitializesStartedAt(t *testing.T) {
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client.statsMu.Lock()
+	client.statsStartedAt = time.Time{}
+	client.statsTotalRequests = 0
+	client.statsInFlight = 0
+	client.statsPeakInFlight = 0
+	client.statsMu.Unlock()
+
+	client.recordGovAPIRequestStart()
+
+	snapshot := client.snapshotGovAPIStats()
+	if snapshot.StartedAt.IsZero() {
+		t.Fatal("expected statsStartedAt to be initialized")
+	}
+	if snapshot.TotalRequests != 1 {
+		t.Fatalf("expected total requests 1, got %d", snapshot.TotalRequests)
+	}
+	if snapshot.InFlight != 1 || snapshot.PeakInFlight != 1 {
+		t.Fatalf("expected in-flight/peak both 1, got in_flight=%d peak=%d", snapshot.InFlight, snapshot.PeakInFlight)
+	}
+}
+
+func TestFetchPricesPageLastPageDetection(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+	withTempWorkingDir(t)
+
+	rateLimiter := time.NewTicker(1 * time.Millisecond)
+	defer rateLimiter.Stop()
+
+	t.Run("zero node ids treated as last page", func(t *testing.T) {
+		dynamicMaxPagesMutex.Lock()
+		pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+		dynamicMaxPagesMutex.Unlock()
+
+		client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}")), Header: make(http.Header)}, nil
+		}))
+
+		if got := fetchPricesPage(context.Background(), client, 5, rateLimiter); got != pageFetchFinalPage {
+			t.Fatalf("expected final page when page contains no node_id, got %v", got)
+		}
+
+		if learned := getDynamicMaxPagesPerCycle(false); learned != 8 {
+			t.Fatalf("expected learned prices cap 8 after terminal page 5, got %d", learned)
+		}
+	})
+
+	t.Run("low node id count treated as last page", func(t *testing.T) {
+		dynamicMaxPagesMutex.Lock()
+		pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
+		dynamicMaxPagesMutex.Unlock()
+
+		body := strings.Repeat("node_id,", NodeIDCountThreshold-1)
+		client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		}))
+
+		if got := fetchPricesPage(context.Background(), client, 7, rateLimiter); got != pageFetchFinalPage {
+			t.Fatalf("expected final page when node_id count is below threshold, got %v", got)
+		}
+
+		if learned := getDynamicMaxPagesPerCycle(false); learned != 10 {
+			t.Fatalf("expected learned prices cap 10 after terminal page 7, got %d", learned)
+		}
+	})
+}

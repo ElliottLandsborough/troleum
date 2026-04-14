@@ -326,3 +326,55 @@ func TestContinuousFetchStationsEndsCycleAtSafetyCapAfterContinue(t *testing.T) 
 		t.Fatal("expected cycle wait after safety-cap reset")
 	}
 }
+
+func TestContinuousFetchStationsEndsCycleAtSafetyCapAfterSkip(t *testing.T) {
+	originalWait := stationsCycleWait
+	originalAbortWait := stationsAbortCycleWait
+	originalFetch := fetchStationsPageForCycle
+	originalLast := lastStationsCycleComplete
+	dynamicMaxPagesMutex.RLock()
+	originalStationsCap := stationsMaxPagesPerCycleCap
+	dynamicMaxPagesMutex.RUnlock()
+	t.Cleanup(func() {
+		stationsCycleWait = originalWait
+		stationsAbortCycleWait = originalAbortWait
+		fetchStationsPageForCycle = originalFetch
+		lastStationsCycleComplete = originalLast
+		dynamicMaxPagesMutex.Lock()
+		stationsMaxPagesPerCycleCap = originalStationsCap
+		dynamicMaxPagesMutex.Unlock()
+	})
+
+	dynamicMaxPagesMutex.Lock()
+	stationsMaxPagesPerCycleCap = 2
+	dynamicMaxPagesMutex.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	lastStationsCycleComplete = time.Time{}
+	waitCalled := false
+	stationsCycleWait = func(time.Duration) <-chan time.Time {
+		waitCalled = true
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	seenPages := make([]int, 0, 3)
+	fetchStationsPageForCycle = func(_ context.Context, _ *OAuthClient, page int, _ *time.Ticker) pageFetchResult {
+		seenPages = append(seenPages, page)
+		return pageFetchSkipPage
+	}
+
+	r := time.NewTicker(time.Hour)
+	defer r.Stop()
+
+	continuousFetchStations(ctx, nil, r)
+
+	if len(seenPages) != 2 || seenPages[0] != 1 || seenPages[1] != 2 {
+		t.Fatalf("expected pages [1 2] before safety-cap reset on skips, got %v", seenPages)
+	}
+	if !waitCalled {
+		t.Fatal("expected cycle wait after safety-cap reset")
+	}
+}

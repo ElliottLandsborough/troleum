@@ -3,6 +3,8 @@ package main
 import (
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -302,4 +304,100 @@ func TestHasUKGeofenceData(t *testing.T) {
 			t.Fatal("expected no geofence data when boundary file cannot be loaded")
 		}
 	})
+}
+
+func TestLoadUKBoundaryScenarios(t *testing.T) {
+	t.Run("invalid json marks loaded with no polygons", func(t *testing.T) {
+		tempDir := withTempWorkingDir(t)
+		boundaryPath := filepath.Join(tempDir, "broken_boundary.json")
+		if err := os.WriteFile(boundaryPath, []byte("{invalid-json"), 0o600); err != nil {
+			t.Fatalf("write boundary file: %v", err)
+		}
+
+		ukPolygonMutex.Lock()
+		prevPolygons := ukGeofencePolygons
+		prevLoaded := ukPolygonLoaded
+		prevPaths := ukBoundaryFilePaths
+		ukGeofencePolygons = nil
+		ukPolygonLoaded = false
+		ukBoundaryFilePaths = []string{boundaryPath}
+		ukPolygonMutex.Unlock()
+
+		t.Cleanup(func() {
+			ukPolygonMutex.Lock()
+			ukGeofencePolygons = prevPolygons
+			ukPolygonLoaded = prevLoaded
+			ukBoundaryFilePaths = prevPaths
+			ukPolygonMutex.Unlock()
+		})
+
+		prevLogWriter := log.Writer()
+		log.SetOutput(io.Discard)
+		t.Cleanup(func() { log.SetOutput(prevLogWriter) })
+
+		loadUKBoundary()
+
+		ukPolygonMutex.RLock()
+		loaded := ukPolygonLoaded
+		count := len(ukGeofencePolygons)
+		ukPolygonMutex.RUnlock()
+
+		if !loaded {
+			t.Fatal("expected boundary loader to mark state as loaded")
+		}
+		if count != 0 {
+			t.Fatalf("expected no polygons loaded from invalid JSON, got %d", count)
+		}
+	})
+
+	t.Run("ignores polygons with fewer than three points", func(t *testing.T) {
+		tempDir := withTempWorkingDir(t)
+		boundaryPath := filepath.Join(tempDir, "too_small_boundary.json")
+		if err := os.WriteFile(boundaryPath, []byte(`[[[51.5,-0.1],[51.6,-0.2]]]`), 0o600); err != nil {
+			t.Fatalf("write boundary file: %v", err)
+		}
+
+		ukPolygonMutex.Lock()
+		prevPolygons := ukGeofencePolygons
+		prevLoaded := ukPolygonLoaded
+		prevPaths := ukBoundaryFilePaths
+		ukGeofencePolygons = nil
+		ukPolygonLoaded = false
+		ukBoundaryFilePaths = []string{boundaryPath}
+		ukPolygonMutex.Unlock()
+
+		t.Cleanup(func() {
+			ukPolygonMutex.Lock()
+			ukGeofencePolygons = prevPolygons
+			ukPolygonLoaded = prevLoaded
+			ukBoundaryFilePaths = prevPaths
+			ukPolygonMutex.Unlock()
+		})
+
+		prevLogWriter := log.Writer()
+		log.SetOutput(io.Discard)
+		t.Cleanup(func() { log.SetOutput(prevLogWriter) })
+
+		loadUKBoundary()
+
+		ukPolygonMutex.RLock()
+		count := len(ukGeofencePolygons)
+		ukPolygonMutex.RUnlock()
+
+		if count != 0 {
+			t.Fatalf("expected no usable polygons loaded, got %d", count)
+		}
+	})
+}
+
+func TestIsPointInPolygonTooSmallPolygon(t *testing.T) {
+	if isPointInPolygon(51.5, -0.1, []geoPoint{{lat: 51.5, lng: -0.1}, {lat: 51.6, lng: -0.2}}) {
+		t.Fatal("expected false for polygon with fewer than three points")
+	}
+}
+
+func TestNormalizeUKStationCoordinatesRejectsOutOfWorldBounds(t *testing.T) {
+	if _, _, ok := normalizeUKStationCoordinates(123.4, -0.1); ok {
+		t.Fatal("expected invalid world-bound coordinate to be rejected")
+	}
 }

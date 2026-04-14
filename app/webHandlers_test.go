@@ -614,6 +614,57 @@ func TestFuelTypesAPIHandler(t *testing.T) {
 	}
 }
 
+func TestFuelTypesAPIHandlerWriteFailure(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	fuelTypesCacheMutex.Lock()
+	fuelTypesCache = []string{"E10", "DIESEL"}
+	fuelTypesCacheMutex.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fuel-types", nil)
+	fw := &failingResponseWriter{}
+
+	fuelTypesAPIHandler(fw, req)
+
+	if fw.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+		t.Fatalf("expected error response content type, got %q", fw.Header().Get("Content-Type"))
+	}
+}
+
+func TestSelectStationsForBoundingBoxDegenerateBbox(t *testing.T) {
+	resetGlobalMemoryStateForTest()
+	t.Cleanup(resetGlobalMemoryStateForTest)
+
+	stationsInput := []Station{
+		{NodeID: "low", Location: Location{Latitude: -10, Longitude: -10}},
+		{NodeID: "mid", Location: Location{Latitude: 0, Longitude: 0}},
+		{NodeID: "high", Location: Location{Latitude: 10, Longitude: 10}},
+	}
+
+	priceStationsMutex.Lock()
+	priceStations = []PriceStation{
+		{NodeID: "low", FuelPrices: []FuelPrice{{FuelType: "E10", Price: 150.0}}},
+		{NodeID: "mid", FuelPrices: []FuelPrice{{FuelType: "E10", Price: 140.0}}},
+		{NodeID: "high", FuelPrices: []FuelPrice{{FuelType: "E10", Price: 130.0}}},
+	}
+	priceStationsIndex = map[string]int{"low": 0, "mid": 1, "high": 2}
+	priceStationsMutex.Unlock()
+
+	selected := selectStationsForBoundingBox(stationsInput, 2, 1.0, 1.0, 1.0, 1.0)
+	if len(selected) != 2 {
+		t.Fatalf("expected 2 selected stations, got %d", len(selected))
+	}
+
+	ids := map[string]bool{}
+	for _, s := range selected {
+		ids[s.NodeID] = true
+	}
+	if !ids["high"] || !ids["mid"] {
+		t.Fatalf("expected cheaper stations high and mid to be preferred, got %#v", selected)
+	}
+}
+
 func TestStationsAPIHandlerLimitsTo100WithoutBbox(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)

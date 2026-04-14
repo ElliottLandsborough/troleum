@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,5 +45,35 @@ func TestLoadConfigAndMustEnv(t *testing.T) {
 	}
 	if got := mustEnv("OAUTH_CLIENT_ID"); got != "client-id" {
 		t.Fatalf("expected mustEnv to return client-id, got %q", got)
+	}
+}
+
+func TestLoadDotEnvScannerError(t *testing.T) {
+	tempDir := withTempWorkingDir(t)
+	filePath := filepath.Join(tempDir, ".env.long")
+	longValue := strings.Repeat("a", 70*1024)
+	if err := os.WriteFile(filePath, []byte("TOO_LONG="+longValue+"\n"), 0o600); err != nil {
+		t.Fatalf("write long env file: %v", err)
+	}
+
+	if err := loadDotEnv(filePath); err == nil {
+		t.Fatal("expected scanner error for overly long line")
+	}
+}
+
+func TestMustEnvMissingFatal(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		_ = mustEnv("MISSING_ENV_FOR_TEST")
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestMustEnvMissingFatal")
+	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1", "MISSING_ENV_FOR_TEST=")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected subprocess to exit with non-zero status")
+	}
+	if _, ok := err.(*exec.ExitError); !ok {
+		t.Fatalf("expected ExitError, got %T (%v)", err, err)
 	}
 }
