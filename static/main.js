@@ -1477,13 +1477,10 @@ function renderPins(pins) {
     markersById.forEach((marker, id) => {
         if (id === 'user-location') return; // never remove the user location marker
         if (id === 'search-location') return; // never remove the search location marker
+        if (selectedStationMarkerId === id) return; // keep user-selected station pinned while its info window is open
         if (!nextIds.has(id)) {
             removeMarker(marker);
             markersById.delete(id);
-
-            if (selectedStationMarkerId === id) {
-                selectedStationMarkerId = null;
-            }
 
             const infoWindow = infoWindowsById.get(id);
             if (infoWindow) {
