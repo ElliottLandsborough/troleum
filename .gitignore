@@ -12,3 +12,4 @@ coverage.out
 *.prof
 .venv/
 .DS_Store
+load_test.sh

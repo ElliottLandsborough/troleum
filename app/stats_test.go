@@ -105,6 +105,36 @@ func TestCollectDiskCacheStatsWithFiles(t *testing.T) {
 	if stats.JSONFileCount != 2 {
 		t.Fatalf("expected 2 json files, got %d", stats.JSONFileCount)
 	}
+	if stats.StationsJSONFileCount != 1 {
+		t.Fatalf("expected 1 stations json file, got %d", stats.StationsJSONFileCount)
+	}
+	if stats.PricesJSONFileCount != 1 {
+		t.Fatalf("expected 1 prices json file, got %d", stats.PricesJSONFileCount)
+	}
+	if stats.OldestStationsFileName != "stations_page_1.json" {
+		t.Fatalf("expected oldest stations file stations_page_1.json, got %q", stats.OldestStationsFileName)
+	}
+	if stats.NewestStationsFileName != "stations_page_1.json" {
+		t.Fatalf("expected newest stations file stations_page_1.json, got %q", stats.NewestStationsFileName)
+	}
+	if stats.OldestPricesFileName != "prices_page_2.json" {
+		t.Fatalf("expected oldest prices file prices_page_2.json, got %q", stats.OldestPricesFileName)
+	}
+	if stats.NewestPricesFileName != "prices_page_2.json" {
+		t.Fatalf("expected newest prices file prices_page_2.json, got %q", stats.NewestPricesFileName)
+	}
+	if stats.OldestStationsFileAgeSeconds < 1199 || stats.OldestStationsFileAgeSeconds > 1201 {
+		t.Fatalf("expected oldest stations age around 1200s, got %d", stats.OldestStationsFileAgeSeconds)
+	}
+	if stats.NewestStationsFileAgeSeconds < 1199 || stats.NewestStationsFileAgeSeconds > 1201 {
+		t.Fatalf("expected newest stations age around 1200s, got %d", stats.NewestStationsFileAgeSeconds)
+	}
+	if stats.OldestPricesFileAgeSeconds < 119 || stats.OldestPricesFileAgeSeconds > 121 {
+		t.Fatalf("expected oldest prices age around 120s, got %d", stats.OldestPricesFileAgeSeconds)
+	}
+	if stats.NewestPricesFileAgeSeconds < 119 || stats.NewestPricesFileAgeSeconds > 121 {
+		t.Fatalf("expected newest prices age around 120s, got %d", stats.NewestPricesFileAgeSeconds)
+	}
 	if stats.OldestFileName != "stations_page_1.json" {
 		t.Fatalf("expected oldest file stations_page_1.json, got %q", stats.OldestFileName)
 	}
@@ -132,6 +162,24 @@ func TestCollectDiskCacheStatsNoJSONFiles(t *testing.T) {
 	stats := collectDiskCacheStats(time.Now())
 	if stats.JSONFileCount != 0 {
 		t.Fatalf("expected 0 json files, got %d", stats.JSONFileCount)
+	}
+	if stats.StationsJSONFileCount != 0 {
+		t.Fatalf("expected 0 stations json files, got %d", stats.StationsJSONFileCount)
+	}
+	if stats.PricesJSONFileCount != 0 {
+		t.Fatalf("expected 0 prices json files, got %d", stats.PricesJSONFileCount)
+	}
+	if stats.OldestStationsFileName != "" {
+		t.Fatalf("expected no oldest stations file, got %q", stats.OldestStationsFileName)
+	}
+	if stats.NewestStationsFileName != "" {
+		t.Fatalf("expected no newest stations file, got %q", stats.NewestStationsFileName)
+	}
+	if stats.OldestPricesFileName != "" {
+		t.Fatalf("expected no oldest prices file, got %q", stats.OldestPricesFileName)
+	}
+	if stats.NewestPricesFileName != "" {
+		t.Fatalf("expected no newest prices file, got %q", stats.NewestPricesFileName)
 	}
 }
 

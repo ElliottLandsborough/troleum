@@ -38,15 +38,33 @@ type healthInfo struct {
 }
 
 type diskCacheInfo struct {
-	JSONFileCount        int    `json:"json_file_count"`
-	OldestFileName       string `json:"oldest_file_name,omitempty"`
-	OldestFileModifiedAt string `json:"oldest_file_modified_at,omitempty"`
-	OldestFileAgeSeconds int64  `json:"oldest_file_age_seconds"`
-	OldestFileAgeHuman   string `json:"oldest_file_age_human"`
-	NewestFileName       string `json:"newest_file_name,omitempty"`
-	NewestFileModifiedAt string `json:"newest_file_modified_at,omitempty"`
-	NewestFileAgeSeconds int64  `json:"newest_file_age_seconds"`
-	NewestFileAgeHuman   string `json:"newest_file_age_human"`
+	JSONFileCount                int    `json:"json_file_count"`
+	StationsJSONFileCount        int    `json:"stations_json_file_count"`
+	PricesJSONFileCount          int    `json:"prices_json_file_count"`
+	OldestStationsFileName       string `json:"oldest_stations_file_name,omitempty"`
+	OldestStationsFileModifiedAt string `json:"oldest_stations_file_modified_at,omitempty"`
+	OldestStationsFileAgeSeconds int64  `json:"oldest_stations_file_age_seconds"`
+	OldestStationsFileAgeHuman   string `json:"oldest_stations_file_age_human"`
+	NewestStationsFileName       string `json:"newest_stations_file_name,omitempty"`
+	NewestStationsFileModifiedAt string `json:"newest_stations_file_modified_at,omitempty"`
+	NewestStationsFileAgeSeconds int64  `json:"newest_stations_file_age_seconds"`
+	NewestStationsFileAgeHuman   string `json:"newest_stations_file_age_human"`
+	OldestPricesFileName         string `json:"oldest_prices_file_name,omitempty"`
+	OldestPricesFileModifiedAt   string `json:"oldest_prices_file_modified_at,omitempty"`
+	OldestPricesFileAgeSeconds   int64  `json:"oldest_prices_file_age_seconds"`
+	OldestPricesFileAgeHuman     string `json:"oldest_prices_file_age_human"`
+	NewestPricesFileName         string `json:"newest_prices_file_name,omitempty"`
+	NewestPricesFileModifiedAt   string `json:"newest_prices_file_modified_at,omitempty"`
+	NewestPricesFileAgeSeconds   int64  `json:"newest_prices_file_age_seconds"`
+	NewestPricesFileAgeHuman     string `json:"newest_prices_file_age_human"`
+	OldestFileName               string `json:"oldest_file_name,omitempty"`
+	OldestFileModifiedAt         string `json:"oldest_file_modified_at,omitempty"`
+	OldestFileAgeSeconds         int64  `json:"oldest_file_age_seconds"`
+	OldestFileAgeHuman           string `json:"oldest_file_age_human"`
+	NewestFileName               string `json:"newest_file_name,omitempty"`
+	NewestFileModifiedAt         string `json:"newest_file_modified_at,omitempty"`
+	NewestFileAgeSeconds         int64  `json:"newest_file_age_seconds"`
+	NewestFileAgeHuman           string `json:"newest_file_age_human"`
 }
 
 type memoryInfo struct {
@@ -144,6 +162,16 @@ func collectDiskCacheStats(now time.Time) diskCacheInfo {
 	oldestName := ""
 	newestName := ""
 	count := 0
+	stationsCount := 0
+	pricesCount := 0
+	oldestStationsTime := now
+	newestStationsTime := time.Time{}
+	oldestStationsName := ""
+	newestStationsName := ""
+	oldestPricesTime := now
+	newestPricesTime := time.Time{}
+	oldestPricesName := ""
+	newestPricesName := ""
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
@@ -165,6 +193,29 @@ func collectDiskCacheStats(now time.Time) diskCacheInfo {
 			newestName = entry.Name()
 		}
 
+		switch {
+		case strings.HasPrefix(entry.Name(), "stations_"):
+			stationsCount++
+			if stationsCount == 1 || mod.Before(oldestStationsTime) {
+				oldestStationsTime = mod
+				oldestStationsName = entry.Name()
+			}
+			if stationsCount == 1 || mod.After(newestStationsTime) {
+				newestStationsTime = mod
+				newestStationsName = entry.Name()
+			}
+		case strings.HasPrefix(entry.Name(), "prices_"):
+			pricesCount++
+			if pricesCount == 1 || mod.Before(oldestPricesTime) {
+				oldestPricesTime = mod
+				oldestPricesName = entry.Name()
+			}
+			if pricesCount == 1 || mod.After(newestPricesTime) {
+				newestPricesTime = mod
+				newestPricesName = entry.Name()
+			}
+		}
+
 		count++
 	}
 
@@ -181,17 +232,64 @@ func collectDiskCacheStats(now time.Time) diskCacheInfo {
 		newestAge = 0
 	}
 
+	oldestStationsAge, newestStationsAge := categorizedFileAges(now, oldestStationsTime, newestStationsTime, stationsCount)
+	oldestPricesAge, newestPricesAge := categorizedFileAges(now, oldestPricesTime, newestPricesTime, pricesCount)
+
 	return diskCacheInfo{
-		JSONFileCount:        count,
-		OldestFileName:       filepath.Base(oldestName),
-		OldestFileModifiedAt: oldestTime.UTC().Format(time.RFC3339),
-		OldestFileAgeSeconds: int64(oldestAge.Seconds()),
-		OldestFileAgeHuman:   oldestAge.Round(time.Second).String(),
-		NewestFileName:       filepath.Base(newestName),
-		NewestFileModifiedAt: newestTime.UTC().Format(time.RFC3339),
-		NewestFileAgeSeconds: int64(newestAge.Seconds()),
-		NewestFileAgeHuman:   newestAge.Round(time.Second).String(),
+		JSONFileCount:                count,
+		StationsJSONFileCount:        stationsCount,
+		PricesJSONFileCount:          pricesCount,
+		OldestStationsFileName:       filepath.Base(oldestStationsName),
+		OldestStationsFileModifiedAt: formatStatsTime(oldestStationsTime, stationsCount),
+		OldestStationsFileAgeSeconds: int64(oldestStationsAge.Seconds()),
+		OldestStationsFileAgeHuman:   oldestStationsAge.Round(time.Second).String(),
+		NewestStationsFileName:       filepath.Base(newestStationsName),
+		NewestStationsFileModifiedAt: formatStatsTime(newestStationsTime, stationsCount),
+		NewestStationsFileAgeSeconds: int64(newestStationsAge.Seconds()),
+		NewestStationsFileAgeHuman:   newestStationsAge.Round(time.Second).String(),
+		OldestPricesFileName:         filepath.Base(oldestPricesName),
+		OldestPricesFileModifiedAt:   formatStatsTime(oldestPricesTime, pricesCount),
+		OldestPricesFileAgeSeconds:   int64(oldestPricesAge.Seconds()),
+		OldestPricesFileAgeHuman:     oldestPricesAge.Round(time.Second).String(),
+		NewestPricesFileName:         filepath.Base(newestPricesName),
+		NewestPricesFileModifiedAt:   formatStatsTime(newestPricesTime, pricesCount),
+		NewestPricesFileAgeSeconds:   int64(newestPricesAge.Seconds()),
+		NewestPricesFileAgeHuman:     newestPricesAge.Round(time.Second).String(),
+		OldestFileName:               filepath.Base(oldestName),
+		OldestFileModifiedAt:         oldestTime.UTC().Format(time.RFC3339),
+		OldestFileAgeSeconds:         int64(oldestAge.Seconds()),
+		OldestFileAgeHuman:           oldestAge.Round(time.Second).String(),
+		NewestFileName:               filepath.Base(newestName),
+		NewestFileModifiedAt:         newestTime.UTC().Format(time.RFC3339),
+		NewestFileAgeSeconds:         int64(newestAge.Seconds()),
+		NewestFileAgeHuman:           newestAge.Round(time.Second).String(),
 	}
+}
+
+func categorizedFileAges(now, oldest, newest time.Time, count int) (time.Duration, time.Duration) {
+	if count == 0 {
+		return 0, 0
+	}
+
+	oldestAge := now.Sub(oldest)
+	if oldestAge < 0 {
+		oldestAge = 0
+	}
+
+	newestAge := now.Sub(newest)
+	if newestAge < 0 {
+		newestAge = 0
+	}
+
+	return oldestAge, newestAge
+}
+
+func formatStatsTime(modifiedAt time.Time, count int) string {
+	if count == 0 || modifiedAt.IsZero() {
+		return ""
+	}
+
+	return modifiedAt.UTC().Format(time.RFC3339)
 }
 
 func collectMemoryStats(now time.Time) memoryInfo {

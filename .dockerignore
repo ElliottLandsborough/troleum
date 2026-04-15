@@ -15,3 +15,4 @@ coverage.out
 .vscode/
 .venv/
 .DS_Store
+load_test.sh
