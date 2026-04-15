@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -295,6 +296,9 @@ func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
 	t.Cleanup(resetGlobalMemoryStateForTest)
 
 	now := time.Now().UTC().Truncate(time.Second)
+	originalStartedAt := runtimeStatsProcessStartedAt
+	runtimeStatsProcessStartedAt = now.Add(-2 * time.Hour)
+	t.Cleanup(func() { runtimeStatsProcessStartedAt = originalStartedAt })
 
 	enrichmentTimerMutex.Lock()
 	enrichmentTimer = time.NewTimer(time.Hour)
@@ -329,7 +333,7 @@ func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
 		t.Fatal("expected stations cycle cooldown to have elapsed")
 	}
 
-	runtimeStats := collectRuntimeStats()
+	runtimeStats := collectRuntimeStats(now)
 	if runtimeStats.RetryQueueLength != 1 {
 		t.Fatalf("expected retry queue length 1, got %d", runtimeStats.RetryQueueLength)
 	}
@@ -338,6 +342,40 @@ func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
 	}
 	if runtimeStats.StationsMaxPagesPerCycleCap != 22 {
 		t.Fatalf("expected stations cap 22, got %d", runtimeStats.StationsMaxPagesPerCycleCap)
+	}
+	if runtimeStats.ProcessStartedAt == "" {
+		t.Fatal("expected process start time to be populated")
+	}
+	if runtimeStats.ProcessUptimeSeconds < 7199 || runtimeStats.ProcessUptimeSeconds > 7201 {
+		t.Fatalf("expected process uptime around 7200s, got %d", runtimeStats.ProcessUptimeSeconds)
+	}
+	if runtimeStats.ProcessUptimeHuman == "" {
+		t.Fatal("expected process uptime human string to be populated")
+	}
+	if runtimeStats.RAMSysBytes == 0 {
+		t.Fatal("expected ram sys bytes to be populated")
+	}
+	if runtimeStats.RAMHeapAllocBytes == 0 {
+		t.Fatal("expected ram heap alloc bytes to be populated")
+	}
+	if runtimeStats.RAMNextGCBytes == 0 {
+		t.Fatal("expected ram next gc bytes to be populated")
+	}
+	humanReadableFields := []string{
+		runtimeStats.RAMSysHuman,
+		runtimeStats.RAMHeapAllocHuman,
+		runtimeStats.RAMNextGCHuman,
+	}
+	for i, value := range humanReadableFields {
+		if value == "" {
+			t.Fatalf("expected human-readable RAM field %d to be populated", i)
+		}
+		if !strings.HasSuffix(value, "B") && !strings.HasSuffix(value, "iB") {
+			t.Fatalf("expected human-readable RAM field %q to use byte units", value)
+		}
+	}
+	if !strings.Contains(runtimeStats.RAMGCCyclesHuman, "cycles") {
+		t.Fatalf("expected gc cycles human string to include 'cycles', got %q", runtimeStats.RAMGCCyclesHuman)
 	}
 }
 

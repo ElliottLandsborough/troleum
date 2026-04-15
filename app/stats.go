@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
 	"time"
@@ -118,10 +120,23 @@ type cooldownInfo struct {
 }
 
 type runtimeInfo struct {
-	RetryQueueLength            int `json:"retry_queue_length"`
-	PricesMaxPagesPerCycleCap   int `json:"prices_max_pages_per_cycle_cap"`
-	StationsMaxPagesPerCycleCap int `json:"stations_max_pages_per_cycle_cap"`
+	RetryQueueLength            int    `json:"retry_queue_length"`
+	PricesMaxPagesPerCycleCap   int    `json:"prices_max_pages_per_cycle_cap"`
+	StationsMaxPagesPerCycleCap int    `json:"stations_max_pages_per_cycle_cap"`
+	ProcessStartedAt            string `json:"process_started_at"`
+	ProcessUptimeSeconds        int64  `json:"process_uptime_seconds"`
+	ProcessUptimeHuman          string `json:"process_uptime_human"`
+	RAMSysBytes                 uint64 `json:"ram_sys_bytes"`
+	RAMSysHuman                 string `json:"ram_sys_human"`
+	RAMHeapAllocBytes           uint64 `json:"ram_heap_alloc_bytes"`
+	RAMHeapAllocHuman           string `json:"ram_heap_alloc_human"`
+	RAMNextGCBytes              uint64 `json:"ram_next_gc_bytes"`
+	RAMNextGCHuman              string `json:"ram_next_gc_human"`
+	RAMGCCycles                 uint32 `json:"ram_gc_cycles"`
+	RAMGCCyclesHuman            string `json:"ram_gc_cycles_human"`
 }
+
+var runtimeStatsProcessStartedAt = time.Now()
 
 func statsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
@@ -129,7 +144,7 @@ func statsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	memory := collectMemoryStats(now)
 	gov := collectGovAPIStats(now)
 	timers := collectTimerStats(now)
-	runtime := collectRuntimeStats()
+	runtime := collectRuntimeStats(now)
 	health := evaluateStatsHealth(disk, memory, gov)
 
 	response := statsResponse{
@@ -442,12 +457,51 @@ func buildCooldownInfo(lastCompletedAt time.Time, cooldown time.Duration, now ti
 	}
 }
 
-func collectRuntimeStats() runtimeInfo {
+func collectRuntimeStats(now time.Time) runtimeInfo {
+	uptime := now.Sub(runtimeStatsProcessStartedAt)
+	if uptime < 0 {
+		uptime = 0
+	}
+
+	var memStats goruntime.MemStats
+	goruntime.ReadMemStats(&memStats)
+
 	return runtimeInfo{
 		RetryQueueLength:            globalRetryQueue.Len(),
 		PricesMaxPagesPerCycleCap:   getDynamicMaxPagesPerCycle(false),
 		StationsMaxPagesPerCycleCap: getDynamicMaxPagesPerCycle(true),
+		ProcessStartedAt:            runtimeStatsProcessStartedAt.UTC().Format(time.RFC3339),
+		ProcessUptimeSeconds:        int64(uptime.Seconds()),
+		ProcessUptimeHuman:          uptime.Round(time.Second).String(),
+		RAMSysBytes:                 memStats.Sys,
+		RAMSysHuman:                 formatBytesHuman(memStats.Sys),
+		RAMHeapAllocBytes:           memStats.HeapAlloc,
+		RAMHeapAllocHuman:           formatBytesHuman(memStats.HeapAlloc),
+		RAMNextGCBytes:              memStats.NextGC,
+		RAMNextGCHuman:              formatBytesHuman(memStats.NextGC),
+		RAMGCCycles:                 memStats.NumGC,
+		RAMGCCyclesHuman:            formatCyclesHuman(memStats.NumGC),
 	}
+}
+
+func formatBytesHuman(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div := float64(unit)
+	exp := 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/div, "KMGTPE"[exp])
+}
+
+func formatCyclesHuman(cycles uint32) string {
+	return fmt.Sprintf("%d cycles", cycles)
 }
 
 func evaluateStatsHealth(disk diskCacheInfo, memory memoryInfo, gov govAPIInfo) healthInfo {
