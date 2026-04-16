@@ -209,6 +209,7 @@ func TestSetupWebServer(t *testing.T) {
 		"main.css":    "body{}",
 		"main.js":     "console.log('ok')",
 		"preview.png": "png",
+		"sitemap.xml": "<?xml version=\"1.0\"?><urlset></urlset>",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(staticDir, name), []byte(content), 0o600); err != nil {
@@ -327,6 +328,12 @@ func TestSetupWebServer(t *testing.T) {
 	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/preview.png", nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 from png asset route, got %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from sitemap route, got %d", w.Code)
 	}
 
 	w = httptest.NewRecorder()

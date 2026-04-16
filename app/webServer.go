@@ -168,6 +168,7 @@ func setupWebServer() *http.Server {
 
 	// /preview.png is the new path for the social media preview image, so we can serve it directly from the static directory with caching
 	mux.Handle("/preview.png", serveCachedFile("static/preview.png"))
+	mux.Handle("/sitemap.xml", serveCachedFile("static/sitemap.xml"))
 
 	// Serve favicon and touch icon assets individually.
 	mux.Handle("/favicon.ico", serveCachedFile("assets/favicon.ico"))
