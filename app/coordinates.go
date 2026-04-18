@@ -15,8 +15,8 @@ const (
 )
 
 type geoPoint struct {
-	lat float64
-	lng float64
+	lat float32
+	lng float32
 }
 
 // ukGeofencePolygons holds OSM-derived UK polygons used only for coordinate correction.
@@ -65,7 +65,7 @@ func loadUKBoundary() {
 		converted := make([]geoPoint, 0, len(polygon))
 		for _, point := range polygon {
 			if len(point) >= 2 {
-				converted = append(converted, geoPoint{lat: point[0], lng: point[1]})
+				converted = append(converted, geoPoint{lat: float32(point[0]), lng: float32(point[1])})
 			}
 		}
 		if len(converted) >= 3 {
@@ -84,15 +84,15 @@ func loadUKBoundary() {
 	ukPolygonLoaded = true
 }
 
-func isWithinWorldBounds(lat, lng float64) bool {
+func isWithinWorldBounds(lat, lng float32) bool {
 	return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
 }
 
-func isWithinUKBounds(lat, lng float64) bool {
-	return lat >= ukMinLatitude && lat <= ukMaxLatitude && lng >= ukMinLongitude && lng <= ukMaxLongitude
+func isWithinUKBounds(lat, lng float32) bool {
+	return lat >= float32(ukMinLatitude) && lat <= float32(ukMaxLatitude) && lng >= float32(ukMinLongitude) && lng <= float32(ukMaxLongitude)
 }
 
-func isPointInPolygon(lat, lng float64, polygon []geoPoint) bool {
+func isPointInPolygon(lat, lng float32, polygon []geoPoint) bool {
 	if len(polygon) < 3 {
 		return false
 	}
@@ -116,7 +116,7 @@ func isPointInPolygon(lat, lng float64, polygon []geoPoint) bool {
 	return inside
 }
 
-func isWithinUKGeofence(lat, lng float64) bool {
+func isWithinUKGeofence(lat, lng float32) bool {
 	ukPolygonMutex.RLock()
 	if !ukPolygonLoaded {
 		ukPolygonMutex.RUnlock()
@@ -136,7 +136,7 @@ func isWithinUKGeofence(lat, lng float64) bool {
 	return false
 }
 
-func isValidUKCoordinate(lat, lng float64) bool {
+func isValidUKCoordinate(lat, lng float32) bool {
 	return isWithinUKBounds(lat, lng) && isWithinUKGeofence(lat, lng)
 }
 
@@ -155,21 +155,23 @@ func hasUKGeofenceData() bool {
 }
 
 func normalizeUKStationCoordinates(lat, lng float64) (float64, float64, bool) {
-	if !isWithinWorldBounds(lat, lng) {
+	lat32 := float32(lat)
+	lng32 := float32(lng)
+	if !isWithinWorldBounds(lat32, lng32) {
 		return 0, 0, false
 	}
 
 	// Try the original and common corruption variants.
 	candidates := []geoPoint{
-		{lat: lat, lng: lng},  // original
-		{lat: lng, lng: lat},  // swapped
-		{lat: lat, lng: -lng}, // longitude sign flipped
-		{lat: lng, lng: -lat}, // swapped + longitude sign flipped in swapped form
+		{lat: lat32, lng: lng32},  // original
+		{lat: lng32, lng: lat32},  // swapped
+		{lat: lat32, lng: -lng32}, // longitude sign flipped
+		{lat: lng32, lng: -lat32}, // swapped + longitude sign flipped in swapped form
 	}
 
 	for _, candidate := range candidates {
 		if isValidUKCoordinate(candidate.lat, candidate.lng) {
-			return candidate.lat, candidate.lng, true
+			return float64(candidate.lat), float64(candidate.lng), true
 		}
 	}
 

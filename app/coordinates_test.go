@@ -200,7 +200,7 @@ func TestIsWithinUKGeofence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isWithinUKGeofence(tt.lat, tt.lng)
+			got := isWithinUKGeofence(float32(tt.lat), float32(tt.lng))
 			if got != tt.want {
 				t.Fatalf("isWithinUKGeofence() = %v, want %v", got, tt.want)
 			}
@@ -267,7 +267,7 @@ func TestHasUKGeofenceData(t *testing.T) {
 	})
 
 	t.Run("returns true when loaded with polygons", func(t *testing.T) {
-		restore := setUKGeofenceStateForTest([][]geoPoint{{{lat: 51.5, lng: -0.1}}}, true)
+		restore := setUKGeofenceStateForTest([][]geoPoint{{{lat: float32(51.5), lng: float32(-0.1)}}}, true)
 		t.Cleanup(restore)
 
 		if !hasUKGeofenceData() {
