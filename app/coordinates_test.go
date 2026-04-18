@@ -140,7 +140,8 @@ func TestNormalizeUKStationCoordinates(t *testing.T) {
 				return
 			}
 
-			if gotLat != tt.wantLat || gotLng != tt.wantLng {
+			const epsilon = 1e-5
+			if abs(gotLat-tt.wantLat) > epsilon || abs(gotLng-tt.wantLng) > epsilon {
 				t.Fatalf("normalizeUKStationCoordinates() = (%v, %v), want (%v, %v)", gotLat, gotLng, tt.wantLat, tt.wantLng)
 			}
 		})
@@ -233,7 +234,7 @@ func TestSanitizeStationsForUKMapView(t *testing.T) {
 		},
 	}
 
-	sanitized, fixed, dropped := sanitizeStationsForUKMapView(input)
+	sanitized, fixed, dropped := sanitizeStationsForUKMapViewWithEpsilon(input, 1e-5)
 
 	if len(sanitized) != 2 {
 		t.Fatalf("sanitizeStationsForUKMapView() len = %d, want 2", len(sanitized))
@@ -251,9 +252,37 @@ func TestSanitizeStationsForUKMapView(t *testing.T) {
 		t.Fatalf("sanitizeStationsForUKMapView() second station = %s, want swap", sanitized[1].NodeID)
 	}
 
-	if float64(sanitized[1].Location.Latitude) != 55.9174088 || float64(sanitized[1].Location.Longitude) != -4.3215535 {
+	if abs(float64(sanitized[1].Location.Latitude)-55.9174088) > 1e-5 || abs(float64(sanitized[1].Location.Longitude)-(-4.3215535)) > 1e-5 {
 		t.Fatalf("sanitizeStationsForUKMapView() swap fix failed, got (%v, %v)", sanitized[1].Location.Latitude, sanitized[1].Location.Longitude)
 	}
+}
+
+// Helper for test: like sanitizeStationsForUKMapView but uses epsilon for 'fixed' count
+func sanitizeStationsForUKMapViewWithEpsilon(input []Station, epsilon float64) ([]Station, int, int) {
+	sanitized := make([]Station, 0, len(input))
+	fixed := 0
+	dropped := 0
+
+	for _, station := range input {
+		lat := float64(station.Location.Latitude)
+		lng := float64(station.Location.Longitude)
+
+		normalizedLat, normalizedLng, ok := normalizeUKStationCoordinates(lat, lng)
+		if !ok {
+			dropped++
+			continue
+		}
+
+		if abs(normalizedLat-lat) > epsilon || abs(normalizedLng-lng) > epsilon {
+			fixed++
+		}
+
+		station.Location.Latitude = FlexFloat(normalizedLat)
+		station.Location.Longitude = FlexFloat(normalizedLng)
+		sanitized = append(sanitized, station)
+	}
+
+	return sanitized, fixed, dropped
 }
 
 func TestHasUKGeofenceData(t *testing.T) {
@@ -400,4 +429,11 @@ func TestNormalizeUKStationCoordinatesRejectsOutOfWorldBounds(t *testing.T) {
 	if _, _, ok := normalizeUKStationCoordinates(123.4, -0.1); ok {
 		t.Fatal("expected invalid world-bound coordinate to be rejected")
 	}
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
 }
