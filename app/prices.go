@@ -116,7 +116,7 @@ func filterStationsByFuelType(stations []Station, fuelType string) []Station {
 		return stations
 	}
 
-	filtered := make([]Station, 0)
+	filtered := make([]Station, 0, 100) // Adjust 100 to a better estimate if available
 	for _, station := range stations {
 		// a station has a slice of strings called FuelTypes.
 		// if any of the strings in that slice match the fuelType parameter,

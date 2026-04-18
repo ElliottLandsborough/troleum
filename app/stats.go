@@ -505,7 +505,7 @@ func formatCyclesHuman(cycles uint32) string {
 }
 
 func evaluateStatsHealth(disk diskCacheInfo, memory memoryInfo, gov govAPIInfo) healthInfo {
-	reasons := make([]string, 0)
+	reasons := make([]string, 0, 5)
 
 	if disk.JSONFileCount == 0 {
 		reasons = append(reasons, "no_json_cache_files_found")

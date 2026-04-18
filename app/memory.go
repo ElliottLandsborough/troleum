@@ -269,7 +269,7 @@ func removeMissingStations() {
 
 	// Snapshot the station pages while locked to avoid race conditions.
 	savedStationsPagesMutex.Lock()
-	stationPagesCopy := make(map[int]ResponseCache)
+	stationPagesCopy := make(map[int]ResponseCache, len(savedStationsPages))
 	for pageNum, cache := range savedStationsPages {
 		stationPagesCopy[pageNum] = cache
 	}
