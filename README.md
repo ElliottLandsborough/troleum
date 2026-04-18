@@ -1,6 +1,7 @@
 # Troleum
 
 [![codecov](https://codecov.io/gh/ElliottLandsborough/troleum/graph/badge.svg?token=47IRCCVJQ0)](https://codecov.io/gh/ElliottLandsborough/troleum)
+[![codacy](https://app.codacy.com/project/badge/Grade/5d5601b2c81243a5bb4e579b5341379f)](https://app.codacy.com/gh/ElliottLandsborough/troleum/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 Troleum is a UK fuel price comparison website that shows petrol station locations, current fuel prices, and distance-based results on an interactive map.
 
