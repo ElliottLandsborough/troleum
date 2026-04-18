@@ -27,6 +27,7 @@ var ukBoundaryFilePaths = []string{
 	"uk_land_osm.json",
 	"app/uk_land_osm.json",
 }
+var ukBoundaryOnce sync.Once
 
 // loadUKBoundary loads the OSM-derived UK polygons used for coordinate correction.
 func loadUKBoundary() {
@@ -117,22 +118,15 @@ func isPointInPolygon(lat, lng float32, polygon []geoPoint) bool {
 }
 
 func isWithinUKGeofence(lat, lng float32) bool {
+	ukBoundaryOnce.Do(loadUKBoundary)
 	ukPolygonMutex.RLock()
-	if !ukPolygonLoaded {
-		ukPolygonMutex.RUnlock()
-		loadUKBoundary()
-		ukPolygonMutex.RLock()
-		defer ukPolygonMutex.RUnlock()
-	} else {
-		defer ukPolygonMutex.RUnlock()
-	}
+	defer ukPolygonMutex.RUnlock()
 
 	for _, polygon := range ukGeofencePolygons {
 		if isPointInPolygon(lat, lng, polygon) {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -141,16 +135,9 @@ func isValidUKCoordinate(lat, lng float32) bool {
 }
 
 func hasUKGeofenceData() bool {
+	ukBoundaryOnce.Do(loadUKBoundary)
 	ukPolygonMutex.RLock()
-	if !ukPolygonLoaded {
-		ukPolygonMutex.RUnlock()
-		loadUKBoundary()
-		ukPolygonMutex.RLock()
-		defer ukPolygonMutex.RUnlock()
-	} else {
-		defer ukPolygonMutex.RUnlock()
-	}
-
+	defer ukPolygonMutex.RUnlock()
 	return len(ukGeofencePolygons) > 0
 }
 
