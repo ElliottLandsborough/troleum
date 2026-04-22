@@ -464,12 +464,24 @@ function showRetryLocationButton() {
         centerMapOnUserLocation();
     };
     input.parentNode.insertBefore(btn, input.nextSibling);
+
+    // Show the retry location hint
+    const hint = document.getElementById('retry-location-hint');
+    if (hint) {
+        hint.style.display = '';
+    }
 }
 
 function hideRetryLocationButton() {
     const btn = document.getElementById('retry-location-btn');
     if (btn && btn.parentNode) {
         btn.parentNode.removeChild(btn);
+    }
+
+    // Hide the retry location hint
+    const hint = document.getElementById('retry-location-hint');
+    if (hint) {
+        hint.style.display = 'none';
     }
 }
 
@@ -481,7 +493,39 @@ function logGeolocationError(context, error) {
     case 1:
         localConsole('warn', `[GEO] ${context}: permission denied (${message})`);
         showRetryLocationButton();
+        handleGeolocationPermissionDenied();
         break;
+    // Handle geolocation permission denied: update UI and optionally disable features
+    function handleGeolocationPermissionDenied() {
+        // Use Permissions API to check if denied is permanent
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'geolocation' }).then(result => {
+                const hint = document.getElementById('retry-location-hint');
+                if (!hint) return;
+                if (result.state === 'denied') {
+                    hint.innerHTML = 'Location access is <b>blocked</b>. Please enable it in your browser settings.';
+                } else {
+                    hint.innerHTML = 'Location access was denied. <span style="text-decoration: underline; cursor: pointer;" onclick="centerMapOnUserLocation()">Retry</span> or allow location in your browser settings.';
+                }
+                hint.style.display = '';
+            }).catch(() => {
+                // Fallback: just show the default hint
+                const hint = document.getElementById('retry-location-hint');
+                if (hint) {
+                    hint.innerHTML = 'Location access was denied. <span style="text-decoration: underline; cursor: pointer;" onclick="centerMapOnUserLocation()">Retry</span> or allow location in your browser settings.';
+                    hint.style.display = '';
+                }
+            });
+        } else {
+            // Fallback: just show the default hint
+            const hint = document.getElementById('retry-location-hint');
+            if (hint) {
+                hint.innerHTML = 'Location access was denied. <span style="text-decoration: underline; cursor: pointer;" onclick="centerMapOnUserLocation()">Retry</span> or allow location in your browser settings.';
+                hint.style.display = '';
+            }
+        }
+        // Optionally, disable location-dependent features here
+    }
     case 2:
         localConsole('warn', `[GEO] ${context}: position unavailable (${message})`);
         break;

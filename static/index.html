@@ -49,6 +49,9 @@
 <body>
     <div class="top-nav">
         <input id="location-input" title="Enter a location" type="text" placeholder="Enter a location">
+        <div id="retry-location-hint" style="display:none; font-size: 0.95em; color: #e67c2c; margin-top: 4px;">
+            Location access was denied. <span style="text-decoration: underline; cursor: pointer;" onclick="centerMapOnUserLocation()">Retry</span> or allow location in your browser settings.
+        </div>
         <button id="menu-toggle" title="Toggle menu">
             <svg class="menu-icon menu-icon-open" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 18L20 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -77,21 +80,6 @@
     <div id="map"></div>
 
     <script src="main.js?v=__ASSET_VERSION__"></script>
-
-    <script>
-        const defaultMapsApiKey = 'AIzaSyBZBhqOIrxogvyAYko5uFbl7kH9nR28HS0'; // limited to server ip address
-        const localMapsApiKey = 'AIzaSyA28JqwGoAkDuCU7UWllZb-aSWQgzLo2LQ'; // limited to wan ip address
-        const normalizedHostname = window.location.hostname.replace(/\.$/, '');
-        const isLocal127 = window.location.protocol === 'http:' &&
-            normalizedHostname === '127.0.0.1' &&
-            window.location.port === '8080';
-
-        const mapsApiKey = isLocal127 ? localMapsApiKey : defaultMapsApiKey;
-        const mapsScript = document.createElement('script');
-        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(mapsApiKey)}&callback=initMap&libraries=places,marker,routes&loading=async`;
-        mapsScript.async = true;
-        mapsScript.defer = true;
-        document.body.appendChild(mapsScript);
-    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZBhqOIrxogvyAYko5uFbl7kH9nR28HS0&callback=initMap&libraries=places,marker,routes&loading=async" async defer></script>
 </body>
 </html>
