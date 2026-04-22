@@ -258,7 +258,7 @@ func TestCollectGovAPIStatsAvailable(t *testing.T) {
 	t.Cleanup(func() { setActiveOAuthClient(nil) })
 
 	now := time.Now().UTC().Truncate(time.Second)
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	client.statsMu.Lock()
 	client.statsStartedAt = now.Add(-10 * time.Minute)
 	client.statsTotalRequests = 30

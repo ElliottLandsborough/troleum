@@ -65,7 +65,9 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 		return Config{ClientID: "id", ClientSecret: "secret"}
 	}
 	mainStartWebServer = func(context.Context) *http.Server { return nil }
-	mainNewOAuthClient = func(string, string, string, string) *OAuthClient { return &OAuthClient{} }
+	mainNewOAuthClient = func(tokenURL, clientID, clientSecret, scope string, govAPIEnabled bool) *OAuthClient {
+		return &OAuthClient{}
+	}
 	mainStartGovAPIStatsLogger = func(context.Context, *OAuthClient, time.Duration) {}
 	mainNewTicker = func(time.Duration) *time.Ticker { return time.NewTicker(1 * time.Millisecond) }
 	mainContinuousFetchStations = func(context.Context, *OAuthClient, *time.Ticker) {}

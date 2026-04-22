@@ -40,6 +40,7 @@ Troleum uses data from the UK government Fuel Finder collection:
 
 Required environment variables:
 
+- `GOVAPI_ENABLED`
 - `OAUTH_CLIENT_ID`
 - `OAUTH_CLIENT_SECRET`
 

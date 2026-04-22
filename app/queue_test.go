@@ -17,7 +17,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func testOAuthClientWithRoundTripper(rt http.RoundTripper) *OAuthClient {
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	client.httpClient = &http.Client{Transport: rt}
 	client.token = &TokenData{AccessToken: "cached-token"}
 	client.expiresAt = time.Now().Add(2 * time.Hour)

@@ -69,7 +69,7 @@ func TestDynamicMaxPagesLearning(t *testing.T) {
 }
 
 func TestNewOAuthClientDefaults(t *testing.T) {
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	if client == nil {
 		t.Fatal("expected client instance")
 	}
@@ -92,7 +92,7 @@ func TestOAuthClientDoUsesCachedToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	client.httpClient = srv.Client()
 	client.token = &TokenData{AccessToken: "cached-token"}
 	client.expiresAt = time.Now().Add(2 * time.Hour)
@@ -124,7 +124,7 @@ func TestRequestTokenScenarios(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewOAuthClient(srv.URL, "id", "secret", "scope")
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
 		err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
 		if err == nil || !strings.Contains(err.Error(), "token request failed") {
 			t.Fatalf("expected token request failed error, got %v", err)
@@ -138,7 +138,7 @@ func TestRequestTokenScenarios(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewOAuthClient(srv.URL, "id", "secret", "scope")
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
 		err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
 		if err == nil {
 			t.Fatal("expected json decode error")
@@ -152,7 +152,7 @@ func TestRequestTokenScenarios(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewOAuthClient(srv.URL, "id", "secret", "scope")
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
 		err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
 		if err == nil || !strings.Contains(err.Error(), "token error: denied") {
 			t.Fatalf("expected token error, got %v", err)
@@ -166,7 +166,7 @@ func TestRequestTokenScenarios(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewOAuthClient(srv.URL, "id", "secret", "scope")
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
 		err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
 		if err != nil {
 			t.Fatalf("expected success, got error: %v", err)
@@ -194,7 +194,7 @@ func TestGetValidTokenRefreshAndFallback(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewOAuthClient(srv.URL, "id", "secret", "scope")
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
 		client.token = &TokenData{AccessToken: "old", RefreshToken: "r1"}
 		client.expiresAt = time.Now().Add(-1 * time.Minute)
 
@@ -226,7 +226,7 @@ func TestGetValidTokenRefreshAndFallback(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewOAuthClient(srv.URL, "id", "secret", "scope")
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
 		client.token = &TokenData{AccessToken: "old", RefreshToken: "r1"}
 		client.expiresAt = time.Now().Add(-1 * time.Minute)
 
@@ -247,7 +247,7 @@ func TestFetchPagesReturnAbortWhenContextCanceled(t *testing.T) {
 	rateLimiter := time.NewTicker(time.Hour)
 	defer rateLimiter.Stop()
 
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 
 	if got := fetchStationsPage(ctx, client, 1, rateLimiter); got != pageFetchAbortCycle {
 		t.Fatalf("expected canceled stations fetch to abort cycle, got %v", got)
@@ -478,7 +478,7 @@ func TestStartGovAPIStatsLoggerGuardClauses(t *testing.T) {
 	defer cancel()
 
 	startGovAPIStatsLogger(ctx, nil, time.Second)
-	startGovAPIStatsLogger(ctx, NewOAuthClient("https://example.test/token", "id", "secret", "scope"), 0)
+	startGovAPIStatsLogger(ctx, NewOAuthClient("https://example.test/token", "id", "secret", "scope", true), 0)
 }
 
 func TestStartGovAPIStatsLoggerEmitsRateLog(t *testing.T) {
@@ -489,7 +489,7 @@ func TestStartGovAPIStatsLoggerEmitsRateLog(t *testing.T) {
 		log.SetOutput(originalOut)
 	})
 
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	client.statsMu.Lock()
 	client.statsStartedAt = time.Now().Add(-2 * time.Minute)
 	client.statsTotalRequests = 12
@@ -548,7 +548,7 @@ func TestOAuthClientDoRetriesOnUnauthorized(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope")
+	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope", true)
 	client.httpClient = srv.Client()
 	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
 	client.expiresAt = time.Now().Add(time.Hour)
@@ -590,7 +590,7 @@ func TestOAuthClientDoReturnsErrorWhenForcedRefreshFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope")
+	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope", true)
 	client.httpClient = srv.Client()
 	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
 	client.expiresAt = time.Now().Add(time.Hour)
@@ -631,7 +631,7 @@ func TestOAuthClientDoReturnsRetryUnauthorizedResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope")
+	client := NewOAuthClient(srv.URL+"/token", "id", "secret", "scope", true)
 	client.httpClient = srv.Client()
 	client.token = &TokenData{AccessToken: "old-token", RefreshToken: "r1"}
 	client.expiresAt = time.Now().Add(time.Hour)
@@ -706,7 +706,7 @@ func TestOAuthClientDoReturnsErrorWhenRetryRequestFails(t *testing.T) {
 }
 
 func TestRequestTokenBuildRequestFailure(t *testing.T) {
-	client := NewOAuthClient("://bad-url", "id", "secret", "scope")
+	client := NewOAuthClient("://bad-url", "id", "secret", "scope", true)
 	err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
 	if err == nil {
 		t.Fatal("expected error when request URL is invalid")
@@ -714,7 +714,7 @@ func TestRequestTokenBuildRequestFailure(t *testing.T) {
 }
 
 func TestRecordGovAPIRequestStartInitializesStartedAt(t *testing.T) {
-	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	client := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	client.statsMu.Lock()
 	client.statsStartedAt = time.Time{}
 	client.statsTotalRequests = 0

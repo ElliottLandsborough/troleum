@@ -259,7 +259,7 @@ func TestSetupWebServer(t *testing.T) {
 		t.Fatalf("expected Cross-Origin-Opener-Policy same-origin on api route, got %q", got)
 	}
 
-	statsClient := NewOAuthClient("https://example.test/token", "id", "secret", "scope")
+	statsClient := NewOAuthClient("https://example.test/token", "id", "secret", "scope", true)
 	setActiveOAuthClient(statsClient)
 	statsClient.statsMu.Lock()
 	statsClient.statsStartedAt = time.Now().Add(-10 * time.Minute)

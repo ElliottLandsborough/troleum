@@ -81,6 +81,7 @@ func main() {
 		cfg.ClientID,
 		cfg.ClientSecret,
 		"fuelfinder.read",
+		cfg.GovAPIEnabled,
 	)
 	setActiveOAuthClient(client)
 	mainStartGovAPIStatsLogger(ctx, client, GovAPIStatsLogInterval)
