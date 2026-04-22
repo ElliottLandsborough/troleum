@@ -78,7 +78,7 @@ save-image:
 build-remote-image:
 	docker buildx build --platform $(REMOTE_PLATFORM) --build-arg ASSET_VERSION=$(ASSET_VERSION) --load -t $(IMAGE_NAME) .
 
-.PHONY send-env
+.PHONY: send-env
 send-env:
 	ssh troleumdeploy "mkdir -p /home/deploy/troleum && chmod 700 /home/deploy/troleum"
 	scp .env.prod troleumdeploy:/home/deploy/troleum/.env
