@@ -996,7 +996,11 @@ function getFuelPriceHtml(fuelType, price, selectedFuelType) {
 }
 
 function getDistanceHtml(distance, isDistanceSelected) {
-    const valueText = distance != null ? `${distance.toFixed(2)} mile` : 'N/A';
+    // Hide if distance is null, undefined, or exactly 0
+    if (distance == null || distance === 0) {
+        return '';
+    }
+    const valueText = `${distance.toFixed(2)} mile`;
     const safeValueText = escapeHtml(valueText);
 
     if (isDistanceSelected) {
@@ -1008,7 +1012,7 @@ function getDistanceHtml(distance, isDistanceSelected) {
 
 function getDistanceHtmlForPin(pin, isDistanceSelected) {
     const routeDistance = routeDistanceMilesByStationId.get(String(pin?.id));
-    if (routeDistance != null) {
+    if (routeDistance != null && routeDistance !== 0) {
         return getDistanceHtml(routeDistance, isDistanceSelected).replace('Distance:', 'Route distance:');
     }
 
