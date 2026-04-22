@@ -58,6 +58,8 @@ type OAuthClient struct {
 	stats403Count      int
 	statsInFlight      int
 	statsPeakInFlight  int
+
+       govAPIEnabled bool
 }
 
 const tokenEarlyRefreshWindow = 10 * time.Minute
@@ -172,15 +174,16 @@ func computeAbortBackoff(baseDelay, maxDelay time.Duration, consecutiveAttempts 
 }
 
 // Constructor
-func NewOAuthClient(tokenURL, clientID, clientSecret, scope string) *OAuthClient {
-	return &OAuthClient{
-		httpClient:     &http.Client{Timeout: 120 * time.Second},
-		tokenURL:       tokenURL,
-		clientID:       clientID,
-		clientSecret:   clientSecret,
-		scope:          scope,
-		statsStartedAt: time.Now(),
-	}
+func NewOAuthClient(tokenURL, clientID, clientSecret, scope string, govAPIEnabled bool) *OAuthClient {
+       return &OAuthClient{
+	       httpClient:     &http.Client{Timeout: 120 * time.Second},
+	       tokenURL:       tokenURL,
+	       clientID:       clientID,
+	       clientSecret:   clientSecret,
+	       scope:          scope,
+	       statsStartedAt: time.Now(),
+	       govAPIEnabled:  govAPIEnabled,
+       }
 }
 
 func (c *OAuthClient) recordGovAPIRequestStart() {
@@ -308,8 +311,14 @@ func startGovAPIStatsLogger(ctx context.Context, client *OAuthClient, interval t
 	}()
 }
 
+
 // Public API call helper (auto-refreshes)
 func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
+       if !c.govAPIEnabled {
+	       log.Printf("[GOVAPI] Skipping API call to %s %s because GOVAPI_ENABLED is false or unset", req.Method, req.URL.String())
+	       return nil, fmt.Errorf("GOVAPI_ENABLED: all GOVAPI calls are disabled")
+       }
+
 	log.Printf("[AUTH] Preparing authenticated request: %s %s", req.Method, req.URL.String())
 
 	token, err := c.getValidTokenWithForce(false)
@@ -318,45 +327,45 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
-	c.recordGovAPIRequestStart()
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		c.recordGovAPIRequestResult(0, err)
-		return nil, err
-	}
-	c.recordGovAPIRequestResult(resp.StatusCode, nil)
+	       req.Header.Set("Authorization", "Bearer "+token)
+	       c.recordGovAPIRequestStart()
+	       resp, err := c.httpClient.Do(req)
+	       if err != nil {
+		       c.recordGovAPIRequestResult(0, err)
+		       return nil, err
+	       }
+	       c.recordGovAPIRequestResult(resp.StatusCode, nil)
 
-	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		return resp, nil
-	}
+	       if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
+		       return resp, nil
+	       }
 
-	log.Printf("[AUTH] Received %d for %s %s, forcing token refresh and retrying once", resp.StatusCode, req.Method, req.URL.String())
-	resp.Body.Close()
+	       log.Printf("[AUTH] Received %d for %s %s, forcing token refresh and retrying once", resp.StatusCode, req.Method, req.URL.String())
+	       resp.Body.Close()
 
-	refreshedToken, refreshErr := c.getValidTokenWithForce(true)
-	if refreshErr != nil {
-		log.Printf("[AUTH] Forced refresh after 401 failed for %s %s: %v", req.Method, req.URL.String(), refreshErr)
-		return nil, refreshErr
-	}
+	       refreshedToken, refreshErr := c.getValidTokenWithForce(true)
+	       if refreshErr != nil {
+		       log.Printf("[AUTH] Forced refresh after 401 failed for %s %s: %v", req.Method, req.URL.String(), refreshErr)
+		       return nil, refreshErr
+	       }
 
-	retryReq := req.Clone(req.Context())
-	retryReq.Header.Set("Authorization", "Bearer "+refreshedToken)
+	       retryReq := req.Clone(req.Context())
+	       retryReq.Header.Set("Authorization", "Bearer "+refreshedToken)
 
-	c.recordGovAPIRequestStart()
-	retryResp, retryErr := c.httpClient.Do(retryReq)
-	if retryErr != nil {
-		c.recordGovAPIRequestResult(0, retryErr)
-		log.Printf("[AUTH] Retry after forced refresh failed for %s %s: %v", req.Method, req.URL.String(), retryErr)
-		return nil, retryErr
-	}
-	c.recordGovAPIRequestResult(retryResp.StatusCode, nil)
+	       c.recordGovAPIRequestStart()
+	       retryResp, retryErr := c.httpClient.Do(retryReq)
+	       if retryErr != nil {
+		       c.recordGovAPIRequestResult(0, retryErr)
+		       log.Printf("[AUTH] Retry after forced refresh failed for %s %s: %v", req.Method, req.URL.String(), retryErr)
+		       return nil, retryErr
+	       }
+	       c.recordGovAPIRequestResult(retryResp.StatusCode, nil)
 
-	if retryResp.StatusCode == http.StatusUnauthorized {
-		log.Printf("[AUTH] Retry after forced refresh still returned 401 for %s %s", req.Method, req.URL.String())
-	}
+	       if retryResp.StatusCode == http.StatusUnauthorized {
+		       log.Printf("[AUTH] Retry after forced refresh still returned 401 for %s %s", req.Method, req.URL.String())
+	       }
 
-	return retryResp, nil
+	       return retryResp, nil
 }
 
 // Get a valid token (cached + refresh-safe)

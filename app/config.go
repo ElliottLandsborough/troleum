@@ -8,16 +8,18 @@ import (
 )
 
 type Config struct {
-	TokenURL     string
-	ClientID     string
-	ClientSecret string
-	Scope        string
+	TokenURL      string
+	ClientID      string
+	ClientSecret  string
+	Scope         string
+	GovAPIEnabled bool
 }
 
 func LoadConfig() Config {
 	return Config{
-		ClientID:     mustEnv("OAUTH_CLIENT_ID"),
-		ClientSecret: mustEnv("OAUTH_CLIENT_SECRET"),
+		ClientID:      mustEnv("OAUTH_CLIENT_ID"),
+		ClientSecret:  mustEnv("OAUTH_CLIENT_SECRET"),
+		GovAPIEnabled: parseBoolEnv(mustEnv("GOVAPI_ENABLED")),
 	}
 }
 
@@ -57,4 +59,17 @@ func loadDotEnv(filename string) error {
 	}
 
 	return scanner.Err()
+}
+
+// parseBoolEnv parses a string as a bool (1, true, yes, on = true; 0, false, no, off = false)
+func parseBoolEnv(val string) bool {
+	switch strings.ToLower(val) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		log.Fatalf("invalid boolean value for env var: %q", val)
+		return false
+	}
 }

@@ -13,3 +13,4 @@ coverage.out
 .venv/
 .DS_Store
 load_test.sh
+.env.prod
