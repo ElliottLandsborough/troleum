@@ -66,7 +66,7 @@ stop:
 	docker-compose down
 
 # prod only commands:
-deploy-to-production: test save-image send-image run-remote
+deploy-to-production: test save-image send-image send-prod-env run-remote
 
 # save docker image to file for distribution
 .PHONY: save-image
@@ -78,8 +78,8 @@ save-image:
 build-remote-image:
 	docker buildx build --platform $(REMOTE_PLATFORM) --build-arg ASSET_VERSION=$(ASSET_VERSION) --load -t $(IMAGE_NAME) .
 
-.PHONY: send-env
-send-env:
+.PHONY: send-prod-env
+send-prod-env:
 	ssh troleumdeploy "mkdir -p /home/deploy/troleum && chmod 700 /home/deploy/troleum"
 	scp .env.prod troleumdeploy:/home/deploy/troleum/.env
 	ssh troleumdeploy "chmod 600 /home/deploy/troleum/.env"
