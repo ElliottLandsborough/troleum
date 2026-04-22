@@ -445,6 +445,32 @@ function stopLocatingUser() {
         clearTimeout(locatingUserTimeoutId);
         locatingUserTimeoutId = null;
     }
+    hideRetryLocationButton();
+}
+
+// --- Retry Location Button Logic ---
+function showRetryLocationButton() {
+    let input = getLocationInputElement();
+    if (!input) return;
+    let existing = document.getElementById('retry-location-btn');
+    if (existing) return;
+    const btn = document.createElement('button');
+    btn.id = 'retry-location-btn';
+    btn.type = 'button';
+    btn.textContent = 'Retry Location';
+    btn.style.marginLeft = '8px';
+    btn.onclick = () => {
+        hideRetryLocationButton();
+        centerMapOnUserLocation();
+    };
+    input.parentNode.insertBefore(btn, input.nextSibling);
+}
+
+function hideRetryLocationButton() {
+    const btn = document.getElementById('retry-location-btn');
+    if (btn && btn.parentNode) {
+        btn.parentNode.removeChild(btn);
+    }
 }
 
 function logGeolocationError(context, error) {
@@ -454,6 +480,7 @@ function logGeolocationError(context, error) {
     switch (code) {
     case 1:
         localConsole('warn', `[GEO] ${context}: permission denied (${message})`);
+        showRetryLocationButton();
         break;
     case 2:
         localConsole('warn', `[GEO] ${context}: position unavailable (${message})`);
