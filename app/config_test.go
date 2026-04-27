@@ -38,6 +38,7 @@ func TestLoadDotEnv(t *testing.T) {
 func TestLoadConfigAndMustEnv(t *testing.T) {
 	t.Setenv("OAUTH_CLIENT_ID", "client-id")
 	t.Setenv("OAUTH_CLIENT_SECRET", "secret")
+	t.Setenv("GOVAPI_ENABLED", "true")
 
 	cfg := LoadConfig()
 	if cfg.ClientID != "client-id" || cfg.ClientSecret != "secret" {
