@@ -29,8 +29,8 @@ jobs:
         run: go test ./app -count=1 -covermode=atomic -coverprofile=coverage.out
 
       - name: Upload coverage reports to Codecov
-        # git ls-remote https://github.com/codecov/codecov-action refs/tags/v5
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe
+        # git ls-remote https://github.com/codecov/codecov-action refs/tags/v6
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.out
