@@ -36,7 +36,7 @@ jobs:
           files: ./coverage.out
           fail_ci_if_error: true
 
-      - name: Install xz-utils
+      - name: Install xz-utils for qlty upload
         run: |
           apt-get update
           apt-get install -y xz-utils
@@ -47,3 +47,4 @@ jobs:
         with:
           token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
           files: ./coverage.out
+          strip-prefix: troleum/
