@@ -148,6 +148,35 @@ func continuousUpdateCachedFuelTypes(ctx context.Context) {
 	}
 }
 
+func waitForPricesCycleWindow(ctx context.Context) (startCycle bool, aborted bool) {
+	cycleTimeMutex.RLock()
+	lastComplete := lastPricesCycleComplete
+	cycleTimeMutex.RUnlock()
+
+	if lastComplete.IsZero() {
+		return true, false
+	}
+
+	waitTime := 15*time.Minute - time.Since(lastComplete)
+	if waitTime <= 0 {
+		return true, false
+	}
+
+	log.Printf("[PRICES] Skipping cycle, waiting %v for 15-minute limit", waitTime)
+	select {
+	case <-ctx.Done():
+		return false, true
+	case <-pricesCycleWait(waitTime):
+		return false, false
+	}
+}
+
+func markPricesCycleComplete() {
+	cycleTimeMutex.Lock()
+	lastPricesCycleComplete = time.Now()
+	cycleTimeMutex.Unlock()
+}
+
 func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter *time.Ticker) {
 	currentPage := 1
 	var cycleStartTime time.Time
@@ -164,24 +193,13 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 
 		// Start timing when we begin a new cycle at page 1
 		if currentPage == 1 {
-			// Check if we need to skip this cycle due to 15-minute limit
-			cycleTimeMutex.RLock()
-			lastComplete := lastPricesCycleComplete
-			cycleTimeMutex.RUnlock()
-
-			if !lastComplete.IsZero() {
-				timeSinceLastCycle := time.Since(lastComplete)
-				if timeSinceLastCycle < 15*time.Minute {
-					waitTime := 15*time.Minute - timeSinceLastCycle
-					log.Printf("[PRICES] Skipping cycle, waiting %v for 15-minute limit", waitTime)
-					select {
-					case <-ctx.Done():
-						log.Println("[PRICES] Shutdown requested, stopping fetch worker")
-						return
-					case <-pricesCycleWait(waitTime):
-					}
-					continue
-				}
+			startCycle, aborted := waitForPricesCycleWindow(ctx)
+			if aborted {
+				log.Println("[PRICES] Shutdown requested, stopping fetch worker")
+				return
+			}
+			if !startCycle {
+				continue
 			}
 
 			cycleStartTime = time.Now()
@@ -190,22 +208,18 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 
 		fetchResult := fetchPricesPageForCycle(ctx, client, currentPage, rateLimiter)
 
-		if fetchResult == pageFetchFinalPage {
+		switch fetchResult {
+		case pageFetchFinalPage:
 			consecutiveCycleAborts = 0
 			consecutiveSkippedPages = 0
 			cycleDuration := time.Since(cycleStartTime)
-			now := time.Now()
-
-			cycleTimeMutex.Lock()
-			lastPricesCycleComplete = now
-			cycleTimeMutex.Unlock()
+			markPricesCycleComplete()
 
 			log.Printf("[PRICES] Reached final page, cycle completed in %v, restarting from page 1", cycleDuration)
 			currentPage = 1
 			continue
-		}
 
-		if fetchResult == pageFetchAbortCycle {
+		case pageFetchAbortCycle:
 			consecutiveCycleAborts++
 			consecutiveSkippedPages = 0
 			abortDelay := computeAbortBackoff(pricesAbortCycleBackoff, pricesAbortCycleMaxBackoff, consecutiveCycleAborts)
@@ -217,18 +231,13 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 			case <-pricesAbortCycleWait(abortDelay):
 			}
 			continue
-		}
 
-		if fetchResult == pageFetchSkipPage {
+		case pageFetchSkipPage:
 			consecutiveCycleAborts = 0
 			consecutiveSkippedPages++
 			if consecutiveSkippedPages >= pricesMaxConsecutiveSkippedPages {
 				cycleDuration := time.Since(cycleStartTime)
-				now := time.Now()
-
-				cycleTimeMutex.Lock()
-				lastPricesCycleComplete = now
-				cycleTimeMutex.Unlock()
+				markPricesCycleComplete()
 
 				log.Printf("[PRICES] Ending cycle after %d consecutive skipped page(s) (latest page %d), duration %v, restarting from page 1", consecutiveSkippedPages, currentPage, cycleDuration)
 				currentPage = 1
@@ -240,31 +249,22 @@ func continuousFetchPrices(ctx context.Context, client *OAuthClient, rateLimiter
 			maxPagesThisCycle := getDynamicMaxPagesPerCycle(false)
 			if currentPage > maxPagesThisCycle {
 				cycleDuration := time.Since(cycleStartTime)
-				now := time.Now()
-
-				cycleTimeMutex.Lock()
-				lastPricesCycleComplete = now
-				cycleTimeMutex.Unlock()
+				markPricesCycleComplete()
 
 				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", maxPagesThisCycle, cycleDuration)
 				currentPage = 1
 				consecutiveSkippedPages = 0
 			}
 			continue
-		}
 
-		if fetchResult == pageFetchContinue {
+		case pageFetchContinue:
 			consecutiveCycleAborts = 0
 			consecutiveSkippedPages = 0
 			currentPage++
 			maxPagesThisCycle := getDynamicMaxPagesPerCycle(false)
 			if currentPage > maxPagesThisCycle {
 				cycleDuration := time.Since(cycleStartTime)
-				now := time.Now()
-
-				cycleTimeMutex.Lock()
-				lastPricesCycleComplete = now
-				cycleTimeMutex.Unlock()
+				markPricesCycleComplete()
 
 				log.Printf("[PRICES] Ending cycle at safety page cap (%d), duration %v, restarting from page 1", maxPagesThisCycle, cycleDuration)
 				currentPage = 1
