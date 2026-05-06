@@ -78,10 +78,11 @@ COPY --chown=appuser:appuser --chmod=555 assets/android-chrome-512x512.png ./ass
 COPY --chown=appuser:appuser --chmod=555 static ./static
 
 # Stamp static asset URLs at build time so each deployed image gets a fresh cache-bust token.
-RUN sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html
-
 # Ensure runtime paths are writable by the non-root user
-RUN mkdir -p /app/json && chown -R appuser:appuser /app && chmod 755 /app/json
+RUN sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html && \
+    mkdir -p /app/json && \
+    chown -R appuser:appuser /app && \
+    chmod 755 /app/json
 
 # Run as non-root user
 USER appuser:appuser
