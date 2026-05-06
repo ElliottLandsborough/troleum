@@ -95,11 +95,16 @@ func isValidLongitude(lng float64) bool {
 	return lng >= MinLongitude && lng <= MaxLongitude
 }
 
+// isFiniteNumber checks if a float64 is finite (not NaN and not Infinity)
+func isFiniteNumber(f float64) bool {
+	return !math.IsNaN(f) && !math.IsInf(f, 0)
+}
+
 // validateBboxRange checks that a bounding box has valid ranges
 func validateBboxRange(minLat, minLng, maxLat, maxLng float64) error {
 	// Check for NaN/Infinity
-	if math.IsNaN(minLat) || math.IsInf(minLat, 0) || math.IsNaN(maxLat) || math.IsInf(maxLat, 0) ||
-		math.IsNaN(minLng) || math.IsInf(minLng, 0) || math.IsNaN(maxLng) || math.IsInf(maxLng, 0) {
+	if !isFiniteNumber(minLat) || !isFiniteNumber(maxLat) ||
+		!isFiniteNumber(minLng) || !isFiniteNumber(maxLng) {
 		return fmt.Errorf("bbox contains NaN or Infinity values")
 	}
 
