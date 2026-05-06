@@ -36,15 +36,10 @@ jobs:
           files: ./coverage.out
           fail_ci_if_error: true
 
-      - name: Debug environment
+      - name: Install xz-utils
         run: |
-          cat /etc/*release
-          apt-cache search xz
-          which xz || echo "xz not found"
-          apt-get update && apt-cache search xz | grep -i xz
-
-      #- name: Install xz-utils
-      #  run: apt-get install -y xz-utils
+          apt-get update
+          apt-get install -y xz-utils
 
       - name: Upload coverage reports to qlty
         # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2
