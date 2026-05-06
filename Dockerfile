@@ -38,7 +38,7 @@ RUN go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
 # PROD
-FROM alpine:latest
+FROM alpine:3
 ARG ASSET_VERSION=dev
 # DEV - we need debian for debugging tools and to avoid musl issues
 #FROM debian:bookworm-slim
