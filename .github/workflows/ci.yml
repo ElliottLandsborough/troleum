@@ -35,3 +35,9 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.out
           fail_ci_if_error: true
+      - name: Upload coverage reports to qlty
+        # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2
+        uses: qltysh/qlty-action/coverage@a19242102d17e497f437d7466aa01b528537e899
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: ./coverage.out
