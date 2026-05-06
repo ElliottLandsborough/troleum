@@ -35,8 +35,17 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.out
           fail_ci_if_error: true
-      - name: Install xz-utils
-        run: apt-get install -y xz-utils
+
+      - name: Debug environment
+        run: |
+          cat /etc/*release
+          apt-cache search xz
+          which xz || echo "xz not found"
+          apt-get update && apt-cache search xz | grep -i xz
+
+      #- name: Install xz-utils
+      #  run: apt-get install -y xz-utils
+
       - name: Upload coverage reports to qlty
         # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2
         uses: qltysh/qlty-action/coverage@a19242102d17e497f437d7466aa01b528537e899
