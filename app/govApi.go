@@ -59,7 +59,7 @@ type OAuthClient struct {
 	statsInFlight      int
 	statsPeakInFlight  int
 
-       govAPIEnabled bool
+	govAPIEnabled bool
 }
 
 const tokenEarlyRefreshWindow = 10 * time.Minute
@@ -175,15 +175,15 @@ func computeAbortBackoff(baseDelay, maxDelay time.Duration, consecutiveAttempts 
 
 // Constructor
 func NewOAuthClient(tokenURL, clientID, clientSecret, scope string, govAPIEnabled bool) *OAuthClient {
-       return &OAuthClient{
-	       httpClient:     &http.Client{Timeout: 120 * time.Second},
-	       tokenURL:       tokenURL,
-	       clientID:       clientID,
-	       clientSecret:   clientSecret,
-	       scope:          scope,
-	       statsStartedAt: time.Now(),
-	       govAPIEnabled:  govAPIEnabled,
-       }
+	return &OAuthClient{
+		httpClient:     &http.Client{Timeout: 120 * time.Second},
+		tokenURL:       tokenURL,
+		clientID:       clientID,
+		clientSecret:   clientSecret,
+		scope:          scope,
+		statsStartedAt: time.Now(),
+		govAPIEnabled:  govAPIEnabled,
+	}
 }
 
 func (c *OAuthClient) recordGovAPIRequestStart() {
@@ -311,13 +311,12 @@ func startGovAPIStatsLogger(ctx context.Context, client *OAuthClient, interval t
 	}()
 }
 
-
 // Public API call helper (auto-refreshes)
 func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
-       if !c.govAPIEnabled {
-	       log.Printf("[GOVAPI] Skipping API call to %s %s because GOVAPI_ENABLED is false or unset", req.Method, req.URL.String())
-	       return nil, fmt.Errorf("GOVAPI_ENABLED: all GOVAPI calls are disabled")
-       }
+	if !c.govAPIEnabled {
+		log.Printf("[GOVAPI] Skipping API call to %s %s because GOVAPI_ENABLED is false or unset", req.Method, req.URL.String())
+		return nil, fmt.Errorf("GOVAPI_ENABLED: all GOVAPI calls are disabled")
+	}
 
 	log.Printf("[AUTH] Preparing authenticated request: %s %s", req.Method, req.URL.String())
 
@@ -327,45 +326,45 @@ func (c *OAuthClient) Do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	       req.Header.Set("Authorization", "Bearer "+token)
-	       c.recordGovAPIRequestStart()
-	       resp, err := c.httpClient.Do(req)
-	       if err != nil {
-		       c.recordGovAPIRequestResult(0, err)
-		       return nil, err
-	       }
-	       c.recordGovAPIRequestResult(resp.StatusCode, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	c.recordGovAPIRequestStart()
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.recordGovAPIRequestResult(0, err)
+		return nil, err
+	}
+	c.recordGovAPIRequestResult(resp.StatusCode, nil)
 
-	       if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
-		       return resp, nil
-	       }
+	if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
+		return resp, nil
+	}
 
-	       log.Printf("[AUTH] Received %d for %s %s, forcing token refresh and retrying once", resp.StatusCode, req.Method, req.URL.String())
-	       resp.Body.Close()
+	log.Printf("[AUTH] Received %d for %s %s, forcing token refresh and retrying once", resp.StatusCode, req.Method, req.URL.String())
+	resp.Body.Close()
 
-	       refreshedToken, refreshErr := c.getValidTokenWithForce(true)
-	       if refreshErr != nil {
-		       log.Printf("[AUTH] Forced refresh after 401 failed for %s %s: %v", req.Method, req.URL.String(), refreshErr)
-		       return nil, refreshErr
-	       }
+	refreshedToken, refreshErr := c.getValidTokenWithForce(true)
+	if refreshErr != nil {
+		log.Printf("[AUTH] Forced refresh after 401 failed for %s %s: %v", req.Method, req.URL.String(), refreshErr)
+		return nil, refreshErr
+	}
 
-	       retryReq := req.Clone(req.Context())
-	       retryReq.Header.Set("Authorization", "Bearer "+refreshedToken)
+	retryReq := req.Clone(req.Context())
+	retryReq.Header.Set("Authorization", "Bearer "+refreshedToken)
 
-	       c.recordGovAPIRequestStart()
-	       retryResp, retryErr := c.httpClient.Do(retryReq)
-	       if retryErr != nil {
-		       c.recordGovAPIRequestResult(0, retryErr)
-		       log.Printf("[AUTH] Retry after forced refresh failed for %s %s: %v", req.Method, req.URL.String(), retryErr)
-		       return nil, retryErr
-	       }
-	       c.recordGovAPIRequestResult(retryResp.StatusCode, nil)
+	c.recordGovAPIRequestStart()
+	retryResp, retryErr := c.httpClient.Do(retryReq)
+	if retryErr != nil {
+		c.recordGovAPIRequestResult(0, retryErr)
+		log.Printf("[AUTH] Retry after forced refresh failed for %s %s: %v", req.Method, req.URL.String(), retryErr)
+		return nil, retryErr
+	}
+	c.recordGovAPIRequestResult(retryResp.StatusCode, nil)
 
-	       if retryResp.StatusCode == http.StatusUnauthorized {
-		       log.Printf("[AUTH] Retry after forced refresh still returned 401 for %s %s", req.Method, req.URL.String())
-	       }
+	if retryResp.StatusCode == http.StatusUnauthorized {
+		log.Printf("[AUTH] Retry after forced refresh still returned 401 for %s %s", req.Method, req.URL.String())
+	}
 
-	       return retryResp, nil
+	return retryResp, nil
 }
 
 // Get a valid token (cached + refresh-safe)
@@ -462,6 +461,10 @@ func (c *OAuthClient) requestToken(form url.Values) error {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		log.Printf("[AUTH] Token endpoint returned non-200 status=%d (grant_type=%s)", resp.StatusCode, grantType)
+		if isMaintenancePage(body) {
+			log.Printf("[AUTH] Token endpoint appears to be under maintenance (status %d)", resp.StatusCode)
+			return fmt.Errorf("token endpoint under maintenance")
+		}
 		return fmt.Errorf("token request failed: %s", body)
 	}
 
@@ -507,8 +510,13 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		resp.Body.Close()
+		if isMaintenancePage(body) {
+			log.Printf("[STATIONS] API appears to be under maintenance (status %d, page %d)", resp.StatusCode, pageNum)
+			return pageFetchSkipPage
+		}
+
 		log.Printf("[STATIONS] API returned status %d for page %d: %s", resp.StatusCode, pageNum, strings.TrimSpace(string(body)))
 
 		if resp.StatusCode == http.StatusNotFound {
@@ -592,8 +600,12 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		resp.Body.Close()
+		if isMaintenancePage(body) {
+			log.Printf("[PRICES] API appears to be under maintenance (status %d, page %d)", resp.StatusCode, pageNum)
+			return pageFetchSkipPage
+		}
 		log.Printf("[PRICES] API returned status %d for page %d: %s", resp.StatusCode, pageNum, strings.TrimSpace(string(body)))
 
 		if resp.StatusCode == http.StatusNotFound {
@@ -651,4 +663,37 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	}
 
 	return pageFetchContinue
+}
+
+func isMaintenancePage(body []byte) bool {
+	bodyString := strings.TrimSpace(string(body))
+	if bodyString == "" {
+		return false
+	}
+
+	lowerBody := strings.ToLower(bodyString)
+
+	// Gov API responses should be JSON in normal operation.
+	if strings.HasPrefix(lowerBody, "{") || strings.HasPrefix(lowerBody, "[") {
+		return false
+	}
+
+	htmlSignals := 0
+	if strings.Contains(lowerBody, "<!doctype html") {
+		htmlSignals++
+	}
+	if strings.Contains(lowerBody, "<html") {
+		htmlSignals++
+	}
+	if strings.Contains(lowerBody, "<head") || strings.Contains(lowerBody, "<body") {
+		htmlSignals++
+	}
+	if strings.Contains(lowerBody, "govuk-template") || strings.Contains(lowerBody, "gov.uk") {
+		htmlSignals++
+	}
+
+	// Match stems so we still detect common typos like "maintainance".
+	hasMaintenanceIntent := strings.Contains(lowerBody, "mainten") || strings.Contains(lowerBody, "maintain")
+
+	return htmlSignals >= 2 && hasMaintenanceIntent
 }

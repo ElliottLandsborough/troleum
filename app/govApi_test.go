@@ -41,6 +41,43 @@ func TestIsRetriableStatusCode(t *testing.T) {
 	}
 }
 
+func TestIsMaintenancePage(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "govuk maintenance html with typo",
+			body: "<!DOCTYPE html><html lang=\"en\" class=\"govuk-template\"><head><title>Maintainance - GOV.UK</title></head><body></body></html>",
+			want: true,
+		},
+		{
+			name: "known maintenance sentence",
+			body: "<!DOCTYPE html><html><body>The service is currently undergoing maintenance</body></html>",
+			want: true,
+		},
+		{
+			name: "json mentioning maintenance is not html maintenance page",
+			body: `{"error":"maintenance window"}`,
+			want: false,
+		},
+		{
+			name: "html without maintenance intent",
+			body: "<!DOCTYPE html><html><head><title>Something else</title></head><body>hello</body></html>",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isMaintenancePage([]byte(tt.body)); got != tt.want {
+				t.Fatalf("isMaintenancePage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDynamicMaxPagesLearning(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)
@@ -128,6 +165,20 @@ func TestRequestTokenScenarios(t *testing.T) {
 		err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
 		if err == nil || !strings.Contains(err.Error(), "token request failed") {
 			t.Fatalf("expected token request failed error, got %v", err)
+		}
+	})
+
+	t.Run("non-504 maintenance html still returns maintenance error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("<!DOCTYPE html><html class=\"govuk-template\"><head><title>Maintainance - GOV.UK</title></head></html>"))
+		}))
+		defer srv.Close()
+
+		client := NewOAuthClient(srv.URL, "id", "secret", "scope", true)
+		err := client.requestToken(url.Values{"grant_type": {"client_credentials"}})
+		if err == nil || !strings.Contains(err.Error(), "under maintenance") {
+			t.Fatalf("expected maintenance error, got %v", err)
 		}
 	})
 
@@ -311,12 +362,14 @@ func TestFetchStationsPageStatusAndQueueBehavior(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
+		body       string
 		want       pageFetchResult
 		wantQueued bool
 	}{
-		{name: "not found is last page", statusCode: http.StatusNotFound, want: pageFetchFinalPage, wantQueued: false},
-		{name: "server error queued retry", statusCode: http.StatusInternalServerError, want: pageFetchContinue, wantQueued: true},
-		{name: "bad request skips page", statusCode: http.StatusBadRequest, want: pageFetchSkipPage, wantQueued: false},
+		{name: "not found is last page", statusCode: http.StatusNotFound, body: "", want: pageFetchFinalPage, wantQueued: false},
+		{name: "server error queued retry", statusCode: http.StatusInternalServerError, body: "", want: pageFetchContinue, wantQueued: true},
+		{name: "bad request skips page", statusCode: http.StatusBadRequest, body: "", want: pageFetchSkipPage, wantQueued: false},
+		{name: "maintenance html skips page regardless of status", statusCode: http.StatusServiceUnavailable, body: "<!DOCTYPE html><html class=\"govuk-template\"><head><title>Maintainance</title></head></html>", want: pageFetchSkipPage, wantQueued: false},
 	}
 
 	for _, tt := range tests {
@@ -325,7 +378,7 @@ func TestFetchStationsPageStatusAndQueueBehavior(t *testing.T) {
 			client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: tt.statusCode,
-					Body:       io.NopCloser(strings.NewReader("")),
+					Body:       io.NopCloser(strings.NewReader(tt.body)),
 					Header:     make(http.Header),
 				}, nil
 			}))
@@ -398,18 +451,20 @@ func TestFetchPricesPageStatusAndBodyBehavior(t *testing.T) {
 	t.Run("status handling mirrors stations", func(t *testing.T) {
 		cases := []struct {
 			statusCode int
+			body       string
 			want       pageFetchResult
 			wantQueued bool
 		}{
-			{http.StatusNotFound, pageFetchFinalPage, false},
-			{http.StatusTooManyRequests, pageFetchContinue, true},
-			{http.StatusBadRequest, pageFetchSkipPage, false},
+			{http.StatusNotFound, "", pageFetchFinalPage, false},
+			{http.StatusTooManyRequests, "", pageFetchContinue, true},
+			{http.StatusBadRequest, "", pageFetchSkipPage, false},
+			{http.StatusServiceUnavailable, "<!DOCTYPE html><html class=\"govuk-template\"><head><title>Maintainance</title></head></html>", pageFetchSkipPage, false},
 		}
 
 		for _, tc := range cases {
 			globalRetryQueue.requests = nil
 			client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				return &http.Response{StatusCode: tc.statusCode, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
+				return &http.Response{StatusCode: tc.statusCode, Body: io.NopCloser(strings.NewReader(tc.body)), Header: make(http.Header)}, nil
 			}))
 
 			got := fetchPricesPage(context.Background(), client, 6, rateLimiter)
