@@ -243,7 +243,6 @@ func retryFetchStationsPage(client *OAuthClient, pageNum int) bool {
 
 	// This used to be above, in the commented area.
 	// Moved here so that we always save the log to db even if saving the file fails
-	// todo: check db to see if this means any false page error gets saved
 	if err != nil {
 		return false
 	}
@@ -309,7 +308,6 @@ func retryFetchPricesPage(client *OAuthClient, pageNum int) bool {
 
 	// This used to be above, in the commented area.
 	// Moved here so that we always save the log to db even if saving the file fails
-	// todo: check db to see if this means any false page error gets saved
 	if err != nil {
 		return false
 	}
