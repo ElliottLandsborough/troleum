@@ -385,9 +385,11 @@ func TestEvaluateStatsHealthOK(t *testing.T) {
 		OldestFileAgeSeconds: int64((30 * time.Minute).Seconds()),
 	}
 	memory := memoryInfo{
-		CachedStationPagesCount:    5,
-		CachedPricePagesCount:      5,
-		OldestCachedPageAgeSeconds: int64((45 * time.Minute).Seconds()),
+		CachedStationPagesCount:           5,
+		CachedPricePagesCount:             5,
+		OldestCachedStationPageAgeSeconds: int64((45 * time.Minute).Seconds()),
+		OldestCachedPricePageAgeSeconds:   int64((10 * time.Minute).Seconds()),
+		OldestCachedPageAgeSeconds:        int64((45 * time.Minute).Seconds()),
 	}
 	gov := govAPIInfo{
 		StatsAvailable: true,
@@ -481,13 +483,18 @@ func TestBuildScheduledTimerInfoAndCooldownInfoEdgeCases(t *testing.T) {
 
 func TestEvaluateStatsHealthWarnsOnStaleDataAndUnavailableGovStats(t *testing.T) {
 	disk := diskCacheInfo{
-		JSONFileCount:        1,
-		OldestFileAgeSeconds: int64((3 * time.Hour).Seconds()),
+		JSONFileCount:                2,
+		StationsJSONFileCount:        1,
+		PricesJSONFileCount:          1,
+		OldestStationsFileAgeSeconds: int64((13 * time.Hour).Seconds()),
+		OldestPricesFileAgeSeconds:   int64((20 * time.Minute).Seconds()),
 	}
 	memory := memoryInfo{
-		CachedStationPagesCount:    1,
-		CachedPricePagesCount:      0,
-		OldestCachedPageAgeSeconds: int64((3 * time.Hour).Seconds()),
+		CachedStationPagesCount:           1,
+		CachedPricePagesCount:             1,
+		OldestCachedStationPageAgeSeconds: int64((13 * time.Hour).Seconds()),
+		OldestCachedPricePageAgeSeconds:   int64((20 * time.Minute).Seconds()),
+		OldestCachedPageAgeSeconds:        int64((13 * time.Hour).Seconds()),
 	}
 	gov := govAPIInfo{StatsAvailable: false}
 
@@ -502,8 +509,10 @@ func TestEvaluateStatsHealthWarnsOnStaleDataAndUnavailableGovStats(t *testing.T)
 	}
 
 	wantReasons := []string{
-		"oldest_json_file_is_stale",
-		"oldest_cached_page_in_memory_is_stale",
+		"oldest_stations_json_file_is_stale",
+		"oldest_prices_json_file_is_stale",
+		"oldest_cached_station_page_in_memory_is_stale",
+		"oldest_cached_price_page_in_memory_is_stale",
 		"gov_api_stats_unavailable",
 	}
 

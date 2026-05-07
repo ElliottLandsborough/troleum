@@ -12,11 +12,13 @@ import (
 )
 
 const (
-	statsWarnOldestJSONFileAge        = 2 * time.Hour
-	statsWarnOldestMemoryCacheAge     = 2 * time.Hour
-	statsWarn403RatioPercent          = 20.0
-	statsWarn4xxRatioPercent          = 40.0
-	statsWarnNetworkErrorRatioPercent = 10.0
+	statsWarnOldestStationsJSONFileAge    = 12 * time.Hour
+	statsWarnOldestPricesJSONFileAge      = 15 * time.Minute
+	statsWarnOldestStationsMemoryCacheAge = 12 * time.Hour
+	statsWarnOldestPricesMemoryCacheAge   = 15 * time.Minute
+	statsWarn403RatioPercent              = 20.0
+	statsWarn4xxRatioPercent              = 40.0
+	statsWarnNetworkErrorRatioPercent     = 10.0
 )
 
 type statsResponse struct {
@@ -70,15 +72,19 @@ type diskCacheInfo struct {
 }
 
 type memoryInfo struct {
-	StationsCount              int    `json:"stations_count"`
-	PriceStationsCount         int    `json:"price_stations_count"`
-	StationPriceEntriesCount   int    `json:"station_price_entries_count"`
-	StationLocationsCount      int    `json:"station_locations_count"`
-	FuelTypesCachedCount       int    `json:"fuel_types_cached_count"`
-	CachedStationPagesCount    int    `json:"cached_station_pages_count"`
-	CachedPricePagesCount      int    `json:"cached_price_pages_count"`
-	OldestCachedPageAgeSeconds int64  `json:"oldest_cached_page_age_seconds"`
-	OldestCachedPageAgeHuman   string `json:"oldest_cached_page_age_human"`
+	StationsCount                     int    `json:"stations_count"`
+	PriceStationsCount                int    `json:"price_stations_count"`
+	StationPriceEntriesCount          int    `json:"station_price_entries_count"`
+	StationLocationsCount             int    `json:"station_locations_count"`
+	FuelTypesCachedCount              int    `json:"fuel_types_cached_count"`
+	CachedStationPagesCount           int    `json:"cached_station_pages_count"`
+	CachedPricePagesCount             int    `json:"cached_price_pages_count"`
+	OldestCachedStationPageAgeSeconds int64  `json:"oldest_cached_station_page_age_seconds"`
+	OldestCachedStationPageAgeHuman   string `json:"oldest_cached_station_page_age_human"`
+	OldestCachedPricePageAgeSeconds   int64  `json:"oldest_cached_price_page_age_seconds"`
+	OldestCachedPricePageAgeHuman     string `json:"oldest_cached_price_page_age_human"`
+	OldestCachedPageAgeSeconds        int64  `json:"oldest_cached_page_age_seconds"`
+	OldestCachedPageAgeHuman          string `json:"oldest_cached_page_age_human"`
 }
 
 type govAPIInfo struct {
@@ -330,41 +336,68 @@ func collectMemoryStats(now time.Time) memoryInfo {
 
 	savedStationsPagesMutex.Lock()
 	cachedStationPagesCount := len(savedStationsPages)
-	oldestCachedAt := time.Time{}
+	oldestStationCachedAt := time.Time{}
 	for _, cache := range savedStationsPages {
-		if oldestCachedAt.IsZero() || cache.CreatedAt.Before(oldestCachedAt) {
-			oldestCachedAt = cache.CreatedAt
+		if oldestStationCachedAt.IsZero() || cache.CreatedAt.Before(oldestStationCachedAt) {
+			oldestStationCachedAt = cache.CreatedAt
 		}
 	}
 	savedStationsPagesMutex.Unlock()
 
 	savedPricesPagesMutex.Lock()
 	cachedPricePagesCount := len(savedPricesPages)
+	oldestPriceCachedAt := time.Time{}
 	for _, cache := range savedPricesPages {
-		if oldestCachedAt.IsZero() || cache.CreatedAt.Before(oldestCachedAt) {
-			oldestCachedAt = cache.CreatedAt
+		if oldestPriceCachedAt.IsZero() || cache.CreatedAt.Before(oldestPriceCachedAt) {
+			oldestPriceCachedAt = cache.CreatedAt
 		}
 	}
 	savedPricesPagesMutex.Unlock()
 
-	oldestCachedAge := time.Duration(0)
-	if !oldestCachedAt.IsZero() {
-		oldestCachedAge = now.Sub(oldestCachedAt)
-		if oldestCachedAge < 0 {
-			oldestCachedAge = 0
+	oldestStationCachedAge := time.Duration(0)
+	if !oldestStationCachedAt.IsZero() {
+		oldestStationCachedAge = now.Sub(oldestStationCachedAt)
+		if oldestStationCachedAge < 0 {
+			oldestStationCachedAge = 0
 		}
 	}
 
+	oldestPriceCachedAge := time.Duration(0)
+	if !oldestPriceCachedAt.IsZero() {
+		oldestPriceCachedAge = now.Sub(oldestPriceCachedAt)
+		if oldestPriceCachedAge < 0 {
+			oldestPriceCachedAge = 0
+		}
+	}
+
+	oldestCachedAge := time.Duration(0)
+	switch {
+	case oldestStationCachedAt.IsZero() && oldestPriceCachedAt.IsZero():
+		oldestCachedAge = 0
+	case oldestStationCachedAt.IsZero():
+		oldestCachedAge = oldestPriceCachedAge
+	case oldestPriceCachedAt.IsZero():
+		oldestCachedAge = oldestStationCachedAge
+	case oldestStationCachedAt.Before(oldestPriceCachedAt):
+		oldestCachedAge = oldestStationCachedAge
+	default:
+		oldestCachedAge = oldestPriceCachedAge
+	}
+
 	return memoryInfo{
-		StationsCount:              stationsCount,
-		PriceStationsCount:         priceStationsCount,
-		StationPriceEntriesCount:   priceEntryCount,
-		StationLocationsCount:      stationLocationsCount,
-		FuelTypesCachedCount:       fuelTypesCount,
-		CachedStationPagesCount:    cachedStationPagesCount,
-		CachedPricePagesCount:      cachedPricePagesCount,
-		OldestCachedPageAgeSeconds: int64(oldestCachedAge.Seconds()),
-		OldestCachedPageAgeHuman:   oldestCachedAge.Round(time.Second).String(),
+		StationsCount:                     stationsCount,
+		PriceStationsCount:                priceStationsCount,
+		StationPriceEntriesCount:          priceEntryCount,
+		StationLocationsCount:             stationLocationsCount,
+		FuelTypesCachedCount:              fuelTypesCount,
+		CachedStationPagesCount:           cachedStationPagesCount,
+		CachedPricePagesCount:             cachedPricePagesCount,
+		OldestCachedStationPageAgeSeconds: int64(oldestStationCachedAge.Seconds()),
+		OldestCachedStationPageAgeHuman:   oldestStationCachedAge.Round(time.Second).String(),
+		OldestCachedPricePageAgeSeconds:   int64(oldestPriceCachedAge.Seconds()),
+		OldestCachedPricePageAgeHuman:     oldestPriceCachedAge.Round(time.Second).String(),
+		OldestCachedPageAgeSeconds:        int64(oldestCachedAge.Seconds()),
+		OldestCachedPageAgeHuman:          oldestCachedAge.Round(time.Second).String(),
 	}
 }
 
@@ -509,14 +542,24 @@ func evaluateStatsHealth(disk diskCacheInfo, memory memoryInfo, gov govAPIInfo) 
 
 	if disk.JSONFileCount == 0 {
 		reasons = append(reasons, "no_json_cache_files_found")
-	} else if time.Duration(disk.OldestFileAgeSeconds)*time.Second > statsWarnOldestJSONFileAge {
-		reasons = append(reasons, "oldest_json_file_is_stale")
+	} else {
+		if disk.StationsJSONFileCount > 0 && time.Duration(disk.OldestStationsFileAgeSeconds)*time.Second > statsWarnOldestStationsJSONFileAge {
+			reasons = append(reasons, "oldest_stations_json_file_is_stale")
+		}
+		if disk.PricesJSONFileCount > 0 && time.Duration(disk.OldestPricesFileAgeSeconds)*time.Second > statsWarnOldestPricesJSONFileAge {
+			reasons = append(reasons, "oldest_prices_json_file_is_stale")
+		}
 	}
 
 	if memory.CachedStationPagesCount+memory.CachedPricePagesCount == 0 {
 		reasons = append(reasons, "no_cached_pages_in_memory")
-	} else if time.Duration(memory.OldestCachedPageAgeSeconds)*time.Second > statsWarnOldestMemoryCacheAge {
-		reasons = append(reasons, "oldest_cached_page_in_memory_is_stale")
+	} else {
+		if memory.CachedStationPagesCount > 0 && time.Duration(memory.OldestCachedStationPageAgeSeconds)*time.Second > statsWarnOldestStationsMemoryCacheAge {
+			reasons = append(reasons, "oldest_cached_station_page_in_memory_is_stale")
+		}
+		if memory.CachedPricePagesCount > 0 && time.Duration(memory.OldestCachedPricePageAgeSeconds)*time.Second > statsWarnOldestPricesMemoryCacheAge {
+			reasons = append(reasons, "oldest_cached_price_page_in_memory_is_stale")
+		}
 	}
 
 	if !gov.StatsAvailable {
