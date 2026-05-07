@@ -306,7 +306,7 @@ func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
 	enrichmentTimerMutex.Unlock()
 
 	cycleTimeMutex.Lock()
-	lastPricesCycleComplete = now.Add(-5 * time.Minute)
+	lastPricesCycleComplete = now.Add(-(pricesCycleCooldown - time.Minute))
 	lastStationsCycleComplete = now.Add(-70 * time.Minute)
 	cycleTimeMutex.Unlock()
 
@@ -329,8 +329,8 @@ func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
 	if !timerStats.PricesCycleCooldown.InCooldown {
 		t.Fatal("expected prices cycle to still be in cooldown")
 	}
-	if timerStats.StationsCycleCooldown.InCooldown {
-		t.Fatal("expected stations cycle cooldown to have elapsed")
+	if !timerStats.StationsCycleCooldown.InCooldown {
+		t.Fatal("expected stations cycle to still be in cooldown")
 	}
 
 	runtimeStats := collectRuntimeStats(now)

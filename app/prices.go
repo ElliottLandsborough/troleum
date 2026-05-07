@@ -13,7 +13,7 @@ var fetchPricesPageForCycle = fetchPricesPage
 
 const pricesAbortCycleBackoff = 2 * time.Minute
 const pricesAbortCycleMaxBackoff = 15 * time.Minute
-const pricesCycleCooldown = 15 * time.Minute
+const pricesCycleCooldown = 5 * time.Minute
 const pricesMaxConsecutiveSkippedPages = 3
 
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint

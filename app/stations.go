@@ -14,7 +14,7 @@ var fetchStationsPageForCycle = fetchStationsPage
 
 const stationsAbortCycleBackoff = 5 * time.Minute
 const stationsAbortCycleMaxBackoff = time.Hour
-const stationsCycleCooldown = time.Hour
+const stationsCycleCooldown = 6 * time.Hour
 const stationsMaxConsecutiveSkippedPages = 3
 
 type Station struct {
