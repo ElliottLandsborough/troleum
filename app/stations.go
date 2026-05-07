@@ -14,6 +14,7 @@ var fetchStationsPageForCycle = fetchStationsPage
 
 const stationsAbortCycleBackoff = 5 * time.Minute
 const stationsAbortCycleMaxBackoff = time.Hour
+const stationsCycleCooldown = time.Hour
 const stationsMaxConsecutiveSkippedPages = 3
 
 type Station struct {
@@ -83,12 +84,12 @@ func waitForStationsCycleWindow(ctx context.Context) (startCycle bool, aborted b
 		return true, false
 	}
 
-	waitTime := time.Hour - time.Since(lastComplete)
+	waitTime := stationsCycleCooldown - time.Since(lastComplete)
 	if waitTime <= 0 {
 		return true, false
 	}
 
-	log.Printf("[STATIONS] Skipping cycle, waiting %v for hourly limit", waitTime)
+	log.Printf("[STATIONS] Skipping cycle, waiting %v for %v limit", waitTime, stationsCycleCooldown)
 	select {
 	case <-ctx.Done():
 		return false, true

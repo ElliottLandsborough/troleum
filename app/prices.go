@@ -13,6 +13,7 @@ var fetchPricesPageForCycle = fetchPricesPage
 
 const pricesAbortCycleBackoff = 2 * time.Minute
 const pricesAbortCycleMaxBackoff = 15 * time.Minute
+const pricesCycleCooldown = 15 * time.Minute
 const pricesMaxConsecutiveSkippedPages = 3
 
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint
@@ -157,12 +158,12 @@ func waitForPricesCycleWindow(ctx context.Context) (startCycle bool, aborted boo
 		return true, false
 	}
 
-	waitTime := 15*time.Minute - time.Since(lastComplete)
+	waitTime := pricesCycleCooldown - time.Since(lastComplete)
 	if waitTime <= 0 {
 		return true, false
 	}
 
-	log.Printf("[PRICES] Skipping cycle, waiting %v for 15-minute limit", waitTime)
+	log.Printf("[PRICES] Skipping cycle, waiting %v for %v limit", waitTime, pricesCycleCooldown)
 	select {
 	case <-ctx.Done():
 		return false, true

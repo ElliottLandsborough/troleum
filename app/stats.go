@@ -412,8 +412,8 @@ func collectTimerStats(now time.Time) timersInfo {
 
 	return timersInfo{
 		Enrichment:            buildScheduledTimerInfo(enrichmentScheduled, enrichmentNext, now),
-		PricesCycleCooldown:   buildCooldownInfo(lastPrices, 15*time.Minute, now),
-		StationsCycleCooldown: buildCooldownInfo(lastStations, time.Hour, now),
+		PricesCycleCooldown:   buildCooldownInfo(lastPrices, pricesCycleCooldown, now),
+		StationsCycleCooldown: buildCooldownInfo(lastStations, stationsCycleCooldown, now),
 	}
 }
 

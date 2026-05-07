@@ -462,15 +462,15 @@ func TestBuildScheduledTimerInfoAndCooldownInfoEdgeCases(t *testing.T) {
 		t.Fatalf("expected 0 seconds for past-due timer, got %d", pastDue.SecondsUntilNextRun)
 	}
 
-	zeroCooldown := buildCooldownInfo(time.Time{}, 15*time.Minute, now)
-	if zeroCooldown.CooldownDurationSeconds != int64((15 * time.Minute).Seconds()) {
+	zeroCooldown := buildCooldownInfo(time.Time{}, pricesCycleCooldown, now)
+	if zeroCooldown.CooldownDurationSeconds != int64(pricesCycleCooldown.Seconds()) {
 		t.Fatalf("unexpected cooldown duration seconds: %d", zeroCooldown.CooldownDurationSeconds)
 	}
 	if zeroCooldown.InCooldown {
 		t.Fatal("expected zero-time cooldown info to not be in cooldown")
 	}
 
-	pastCompleted := buildCooldownInfo(now.Add(-2*time.Hour), 15*time.Minute, now)
+	pastCompleted := buildCooldownInfo(now.Add(-2*time.Hour), pricesCycleCooldown, now)
 	if pastCompleted.InCooldown {
 		t.Fatal("expected cooldown to be elapsed")
 	}

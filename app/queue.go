@@ -123,19 +123,19 @@ func retryWorker(ctx context.Context, client *OAuthClient, rateLimiter *time.Tic
 		if req.IsStations {
 			if !lastStationsCycleComplete.IsZero() {
 				timeSinceLastCycle := time.Since(lastStationsCycleComplete)
-				if timeSinceLastCycle < time.Hour {
+				if timeSinceLastCycle < stationsCycleCooldown {
 					shouldWait = true
-					waitTime = time.Hour - timeSinceLastCycle
-					limitType = "hourly"
+					waitTime = stationsCycleCooldown - timeSinceLastCycle
+					limitType = stationsCycleCooldown.String()
 				}
 			}
 		} else {
 			if !lastPricesCycleComplete.IsZero() {
 				timeSinceLastCycle := time.Since(lastPricesCycleComplete)
-				if timeSinceLastCycle < 15*time.Minute {
+				if timeSinceLastCycle < pricesCycleCooldown {
 					shouldWait = true
-					waitTime = 15*time.Minute - timeSinceLastCycle
-					limitType = "15-minute"
+					waitTime = pricesCycleCooldown - timeSinceLastCycle
+					limitType = pricesCycleCooldown.String()
 				}
 			}
 		}
