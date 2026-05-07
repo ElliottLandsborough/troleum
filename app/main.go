@@ -86,8 +86,8 @@ func main() {
 	setActiveOAuthClient(client)
 	mainStartGovAPIStatsLogger(ctx, client, GovAPIStatsLogInterval)
 
-	// Create rate limiter (3 requests per minute = 1 request every 20 seconds)
-	rateLimiter := mainNewTicker(20 * time.Second)
+	// Create rate limiter (20 requests per minute = 1 request every 3 seconds)
+	rateLimiter := mainNewTicker(3 * time.Second)
 	// prod allows 6 requests per minute, so use:
 	// rateLimiter := time.NewTicker(10 * time.Second)
 	defer rateLimiter.Stop()
