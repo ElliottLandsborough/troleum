@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -877,7 +877,14 @@ func TestFetchStationsPageWrites500DumpFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed reading dump file: %v", err)
 	}
-	if !strings.Contains(string(content), "stations server error body") {
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "request_type=stations_page") || !strings.Contains(contentStr, "status=500") {
+		t.Fatalf("expected dump file to include metadata, got: %s", contentStr)
+	}
+	if !strings.Contains(contentStr, "--- response_body_begin ---") || !strings.Contains(contentStr, "--- response_body_end ---") {
+		t.Fatalf("expected dump file to include body markers, got: %s", contentStr)
+	}
+	if !strings.Contains(contentStr, "stations server error body") {
 		t.Fatalf("expected dump file to contain response body, got: %s", string(content))
 	}
 }
@@ -920,7 +927,14 @@ func TestFetchPricesPageWrites500DumpFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed reading dump file: %v", err)
 	}
-	if !strings.Contains(string(content), "prices server error body") {
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "request_type=prices_page") || !strings.Contains(contentStr, "status=500") {
+		t.Fatalf("expected dump file to include metadata, got: %s", contentStr)
+	}
+	if !strings.Contains(contentStr, "--- response_body_begin ---") || !strings.Contains(contentStr, "--- response_body_end ---") {
+		t.Fatalf("expected dump file to include body markers, got: %s", contentStr)
+	}
+	if !strings.Contains(contentStr, "prices server error body") {
 		t.Fatalf("expected dump file to contain response body, got: %s", string(content))
 	}
 }

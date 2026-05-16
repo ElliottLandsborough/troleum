@@ -510,10 +510,15 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		var body []byte
+		if resp.StatusCode == http.StatusInternalServerError {
+			body, _ = io.ReadAll(resp.Body)
+		} else {
+			body, _ = io.ReadAll(io.LimitReader(resp.Body, 2048))
+		}
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusInternalServerError {
-			filePath, saveErr := saveHTTP500Response(body, pageNum, RequestTypeStationsPage)
+			filePath, saveErr := saveHTTP500Response(body, pageNum, RequestTypeStationsPage, apiURL, resp.StatusCode)
 			if saveErr != nil {
 				log.Printf("[STATIONS] Failed to write HTTP 500 response dump for page %d: %v", pageNum, saveErr)
 			} else {
@@ -604,10 +609,15 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		var body []byte
+		if resp.StatusCode == http.StatusInternalServerError {
+			body, _ = io.ReadAll(resp.Body)
+		} else {
+			body, _ = io.ReadAll(io.LimitReader(resp.Body, 2048))
+		}
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusInternalServerError {
-			filePath, saveErr := saveHTTP500Response(body, pageNum, RequestTypePricesPage)
+			filePath, saveErr := saveHTTP500Response(body, pageNum, RequestTypePricesPage, apiURL, resp.StatusCode)
 			if saveErr != nil {
 				log.Printf("[PRICES] Failed to write HTTP 500 response dump for page %d: %v", pageNum, saveErr)
 			} else {
