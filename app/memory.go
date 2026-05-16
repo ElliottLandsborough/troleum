@@ -140,7 +140,6 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 		savedStationsPages[pageNum] = cache
 		if nodeIdCount < NodeIDCountThreshold {
 			log.Printf("[CACHE] WARNING: Page %d of type %s has a low node_id count of %d", pageNum, requestType, nodeIdCount)
-			ClearCachedPageDataAbovePageNum(savedStationsPages, requestType, pageNum)
 		}
 
 		savedStationsPagesMutex.Unlock()
@@ -149,7 +148,6 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 		savedPricesPages[pageNum] = cache
 		if nodeIdCount < NodeIDCountThreshold {
 			log.Printf("[CACHE] WARNING: Page %d of type %s has a low node_id count of %d", pageNum, requestType, nodeIdCount)
-			ClearCachedPageDataAbovePageNum(savedPricesPages, requestType, pageNum)
 		}
 		savedPricesPagesMutex.Unlock()
 	}
@@ -160,12 +158,31 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 
 // This function will take a global slice, a mutex, and an integer
 func ClearCachedPageDataAbovePageNum(responseCache map[int]ResponseCache, requestType RequestType, pageNum int) {
-	log.Printf("[CACHE] Clearing cached page data above page %d of type %s due to low node_id count", pageNum, requestType)
+	log.Printf("[CACHE] Clearing cached page data above page %d of type %s", pageNum, requestType)
 	for key := range responseCache {
 		if key > pageNum {
 			delete(responseCache, key)
 			log.Printf("[CACHE] Deleted cached page %d of type %s from memory as it's higher than current page %d of type %s", key, requestType, pageNum, requestType)
 		}
+	}
+}
+
+// clearCachedPagesAfterTerminalPage removes cached pages above the last valid
+// page after the API confirms a terminal page (404 or empty payload).
+func clearCachedPagesAfterTerminalPage(lastValidPage int, requestType RequestType) {
+	if lastValidPage < 1 {
+		return
+	}
+
+	switch requestType {
+	case RequestTypeStationsPage:
+		savedStationsPagesMutex.Lock()
+		ClearCachedPageDataAbovePageNum(savedStationsPages, requestType, lastValidPage)
+		savedStationsPagesMutex.Unlock()
+	case RequestTypePricesPage:
+		savedPricesPagesMutex.Lock()
+		ClearCachedPageDataAbovePageNum(savedPricesPages, requestType, lastValidPage)
+		savedPricesPagesMutex.Unlock()
 	}
 }
 

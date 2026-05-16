@@ -521,6 +521,8 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 
 		if resp.StatusCode == http.StatusNotFound {
 			log.Printf("[STATIONS] Page %d returned 404, treating as last page", pageNum)
+			clearCachedPagesAfterTerminalPage(pageNum-1, RequestTypeStationsPage)
+			setDynamicMaxPagesFromTerminalPage(true, pageNum-1)
 			return pageFetchFinalPage
 		}
 
@@ -550,7 +552,8 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
 		log.Printf("[STATIONS] Page %d contains no node_id occurrences, treating as last page", pageNum)
-		setDynamicMaxPagesFromTerminalPage(true, pageNum)
+		clearCachedPagesAfterTerminalPage(pageNum-1, RequestTypeStationsPage)
+		setDynamicMaxPagesFromTerminalPage(true, pageNum-1)
 		return pageFetchFinalPage
 	}
 
@@ -564,13 +567,6 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 		log.Printf("[STATIONS] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
 		log.Printf("[STATIONS] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
-	}
-
-	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
-	if nodeIdCount < NodeIDCountThreshold {
-		log.Printf("[STATIONS] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
-		setDynamicMaxPagesFromTerminalPage(true, pageNum)
-		return pageFetchFinalPage
 	}
 
 	return pageFetchContinue
@@ -610,6 +606,8 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 
 		if resp.StatusCode == http.StatusNotFound {
 			log.Printf("[PRICES] Page %d returned 404, treating as last page", pageNum)
+			clearCachedPagesAfterTerminalPage(pageNum-1, RequestTypePricesPage)
+			setDynamicMaxPagesFromTerminalPage(false, pageNum-1)
 			return pageFetchFinalPage
 		}
 
@@ -639,7 +637,8 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	// If no node_id found, treat as last page
 	if nodeIdCount == 0 {
 		log.Printf("[PRICES] Page %d contains no node_id occurrences, treating as last page", pageNum)
-		setDynamicMaxPagesFromTerminalPage(false, pageNum)
+		clearCachedPagesAfterTerminalPage(pageNum-1, RequestTypePricesPage)
+		setDynamicMaxPagesFromTerminalPage(false, pageNum-1)
 		return pageFetchFinalPage
 	}
 
@@ -653,13 +652,6 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 		log.Printf("[PRICES] Error saving JSON file for page %d: %v", pageNum, err)
 	} else {
 		log.Printf("[PRICES] Saved page %d to file: %s", pageNum, filepath.Base(filePath))
-	}
-
-	// Return true if this page has less than NodeIDCountThreshold node_ids (last page)
-	if nodeIdCount < NodeIDCountThreshold {
-		log.Printf("[PRICES] Page %d appears to be the last page (%d node_ids)", pageNum, nodeIdCount)
-		setDynamicMaxPagesFromTerminalPage(false, pageNum)
-		return pageFetchFinalPage
 	}
 
 	return pageFetchContinue

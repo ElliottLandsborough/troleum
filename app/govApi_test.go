@@ -812,12 +812,12 @@ func TestFetchPricesPageLastPageDetection(t *testing.T) {
 			t.Fatalf("expected final page when page contains no node_id, got %v", got)
 		}
 
-		if learned := getDynamicMaxPagesPerCycle(false); learned != 8 {
-			t.Fatalf("expected learned prices cap 8 after terminal page 5, got %d", learned)
+		if learned := getDynamicMaxPagesPerCycle(false); learned != 7 {
+			t.Fatalf("expected learned prices cap 7 after terminal page 5 (last valid page 4), got %d", learned)
 		}
 	})
 
-	t.Run("low node id count treated as last page", func(t *testing.T) {
+	t.Run("low node id count is not treated as last page", func(t *testing.T) {
 		dynamicMaxPagesMutex.Lock()
 		pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
 		dynamicMaxPagesMutex.Unlock()
@@ -827,12 +827,12 @@ func TestFetchPricesPageLastPageDetection(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchPricesPage(context.Background(), client, 7, rateLimiter); got != pageFetchFinalPage {
-			t.Fatalf("expected final page when node_id count is below threshold, got %v", got)
+		if got := fetchPricesPage(context.Background(), client, 7, rateLimiter); got != pageFetchContinue {
+			t.Fatalf("expected continue when node_id count is below threshold, got %v", got)
 		}
 
-		if learned := getDynamicMaxPagesPerCycle(false); learned != 10 {
-			t.Fatalf("expected learned prices cap 10 after terminal page 7, got %d", learned)
+		if learned := getDynamicMaxPagesPerCycle(false); learned != defaultMaxPagesPerCycle {
+			t.Fatalf("expected learned prices cap to remain default %d, got %d", defaultMaxPagesPerCycle, learned)
 		}
 	})
 }
