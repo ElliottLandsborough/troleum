@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // writeJSONPretty writes data as pretty-printed JSON when in debug mode
@@ -78,6 +79,25 @@ func savePageJSON(jsonString string, pageNumber int, logName string) (string, er
 	defer f.Close()
 
 	_, err = f.WriteString(jsonString)
+	return fullPath, nil
+}
+
+func saveHTTP500Response(body []byte, pageNumber int, requestType RequestType) (string, error) {
+	dir := filepath.Join("json", "errors")
+	filename := fmt.Sprintf("%s_%d_status_500_%d.log", requestType, pageNumber, time.Now().UnixNano())
+	fullPath := filepath.Join(dir, filename)
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	prefix := fmt.Sprintf("timestamp=%s\nrequest_type=%s\npage=%d\nstatus=500\n\n", time.Now().UTC().Format(time.RFC3339Nano), requestType, pageNumber)
+	content := append([]byte(prefix), body...)
+
+	if err := os.WriteFile(fullPath, content, 0600); err != nil {
+		return "", err
+	}
+
 	return fullPath, nil
 }
 

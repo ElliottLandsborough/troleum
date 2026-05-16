@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"net/url"
 	"strings"
 	"testing"
@@ -835,4 +837,90 @@ func TestFetchPricesPageLastPageDetection(t *testing.T) {
 			t.Fatalf("expected learned prices cap to remain default %d, got %d", defaultMaxPagesPerCycle, learned)
 		}
 	})
+}
+
+func TestFetchStationsPageWrites500DumpFile(t *testing.T) {
+	originalQueue := globalRetryQueue
+	globalRetryQueue = &RetryQueue{requests: make([]RetryRequest, 0)}
+	t.Cleanup(func() { globalRetryQueue = originalQueue })
+
+	withTempWorkingDir(t)
+	rateLimiter := time.NewTicker(1 * time.Millisecond)
+	defer rateLimiter.Stop()
+
+	client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Body:       io.NopCloser(strings.NewReader("stations server error body")),
+			Header:     make(http.Header),
+		}, nil
+	}))
+
+	got := fetchStationsPage(context.Background(), client, 11, rateLimiter)
+	if got != pageFetchContinue {
+		t.Fatalf("expected continue for 500 response, got %v", got)
+	}
+
+	errorDir := filepath.Join("json", "errors")
+	entries, err := os.ReadDir(errorDir)
+	if err != nil {
+		t.Fatalf("expected error dump directory to exist: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one error dump file, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].Name(), "stations_page_11_status_500") {
+		t.Fatalf("unexpected dump filename: %s", entries[0].Name())
+	}
+
+	content, err := os.ReadFile(filepath.Join(errorDir, entries[0].Name()))
+	if err != nil {
+		t.Fatalf("failed reading dump file: %v", err)
+	}
+	if !strings.Contains(string(content), "stations server error body") {
+		t.Fatalf("expected dump file to contain response body, got: %s", string(content))
+	}
+}
+
+func TestFetchPricesPageWrites500DumpFile(t *testing.T) {
+	originalQueue := globalRetryQueue
+	globalRetryQueue = &RetryQueue{requests: make([]RetryRequest, 0)}
+	t.Cleanup(func() { globalRetryQueue = originalQueue })
+
+	withTempWorkingDir(t)
+	rateLimiter := time.NewTicker(1 * time.Millisecond)
+	defer rateLimiter.Stop()
+
+	client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Body:       io.NopCloser(strings.NewReader("prices server error body")),
+			Header:     make(http.Header),
+		}, nil
+	}))
+
+	got := fetchPricesPage(context.Background(), client, 12, rateLimiter)
+	if got != pageFetchContinue {
+		t.Fatalf("expected continue for 500 response, got %v", got)
+	}
+
+	errorDir := filepath.Join("json", "errors")
+	entries, err := os.ReadDir(errorDir)
+	if err != nil {
+		t.Fatalf("expected error dump directory to exist: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one error dump file, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].Name(), "prices_page_12_status_500") {
+		t.Fatalf("unexpected dump filename: %s", entries[0].Name())
+	}
+
+	content, err := os.ReadFile(filepath.Join(errorDir, entries[0].Name()))
+	if err != nil {
+		t.Fatalf("failed reading dump file: %v", err)
+	}
+	if !strings.Contains(string(content), "prices server error body") {
+		t.Fatalf("expected dump file to contain response body, got: %s", string(content))
+	}
 }
