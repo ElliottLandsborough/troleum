@@ -562,12 +562,12 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 	// Check if this is the last page by counting 'node_id' occurrences
 	nodeIdCount := strings.Count(bodyString, "node_id")
 
-	// If no node_id found, treat as last page
+	// If no node_id is present in a 200 response, treat it as a transient anomaly
+	// rather than a confirmed terminal page. This avoids incorrectly shrinking
+	// dynamic page caps after temporary upstream issues.
 	if nodeIdCount == 0 {
-		log.Printf("[STATIONS] Page %d contains no node_id occurrences, treating as last page", pageNum)
-		clearCachedPagesAfterTerminalPage(pageNum-1, RequestTypeStationsPage)
-		setDynamicMaxPagesFromTerminalPage(true, pageNum-1)
-		return pageFetchFinalPage
+		log.Printf("[STATIONS] Page %d contains no node_id occurrences in a 200 response, skipping page without terminal-page learning", pageNum)
+		return pageFetchSkipPage
 	}
 
 	log.Printf("[STATIONS] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)
@@ -660,12 +660,12 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 	// Check if this is the last page by counting 'node_id' occurrences
 	nodeIdCount := strings.Count(bodyString, "node_id")
 
-	// If no node_id found, treat as last page
+	// If no node_id is present in a 200 response, treat it as a transient anomaly
+	// rather than a confirmed terminal page. This avoids incorrectly shrinking
+	// dynamic page caps after temporary upstream issues.
 	if nodeIdCount == 0 {
-		log.Printf("[PRICES] Page %d contains no node_id occurrences, treating as last page", pageNum)
-		clearCachedPagesAfterTerminalPage(pageNum-1, RequestTypePricesPage)
-		setDynamicMaxPagesFromTerminalPage(false, pageNum-1)
-		return pageFetchFinalPage
+		log.Printf("[PRICES] Page %d contains no node_id occurrences in a 200 response, skipping page without terminal-page learning", pageNum)
+		return pageFetchSkipPage
 	}
 
 	log.Printf("[PRICES] Page %d contains %d node_id occurrences", pageNum, nodeIdCount)

@@ -419,13 +419,13 @@ func TestFetchStationsPageBodyAndNodeIDBehavior(t *testing.T) {
 		}
 	})
 
-	t.Run("zero node ids treated as last page", func(t *testing.T) {
+	t.Run("zero node ids are skipped as transient", func(t *testing.T) {
 		client := testOAuthClientWithRoundTripper(roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}")), Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchStationsPage(context.Background(), client, 2, rateLimiter); got != pageFetchFinalPage {
-			t.Fatalf("expected final page when page contains no node_id, got %v", got)
+		if got := fetchStationsPage(context.Background(), client, 2, rateLimiter); got != pageFetchSkipPage {
+			t.Fatalf("expected skipped page when page contains no node_id in 200 response, got %v", got)
 		}
 	})
 
@@ -801,7 +801,7 @@ func TestFetchPricesPageLastPageDetection(t *testing.T) {
 	rateLimiter := time.NewTicker(1 * time.Millisecond)
 	defer rateLimiter.Stop()
 
-	t.Run("zero node ids treated as last page", func(t *testing.T) {
+	t.Run("zero node ids are skipped as transient", func(t *testing.T) {
 		dynamicMaxPagesMutex.Lock()
 		pricesMaxPagesPerCycleCap = defaultMaxPagesPerCycle
 		dynamicMaxPagesMutex.Unlock()
@@ -810,12 +810,12 @@ func TestFetchPricesPageLastPageDetection(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}")), Header: make(http.Header)}, nil
 		}))
 
-		if got := fetchPricesPage(context.Background(), client, 5, rateLimiter); got != pageFetchFinalPage {
-			t.Fatalf("expected final page when page contains no node_id, got %v", got)
+		if got := fetchPricesPage(context.Background(), client, 5, rateLimiter); got != pageFetchSkipPage {
+			t.Fatalf("expected skipped page when page contains no node_id in 200 response, got %v", got)
 		}
 
-		if learned := getDynamicMaxPagesPerCycle(false); learned != 7 {
-			t.Fatalf("expected learned prices cap 7 after terminal page 5 (last valid page 4), got %d", learned)
+		if learned := getDynamicMaxPagesPerCycle(false); learned != defaultMaxPagesPerCycle {
+			t.Fatalf("expected learned prices cap to remain default %d after zero-node-id 200 response, got %d", defaultMaxPagesPerCycle, learned)
 		}
 	})
 
