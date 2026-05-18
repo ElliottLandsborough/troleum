@@ -14,3 +14,4 @@ coverage.out
 .DS_Store
 load_test.sh
 .env.prod
+app/json/errors*
