@@ -27,18 +27,25 @@ COPY app/stats.go /app/
 COPY app/webHandlers.go /app/
 COPY app/webServer.go /app/
 
-RUN ls -alh /app
-
 # Build the binary (with debug optimizations)
 #RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
 
 # Build the binary with production optimizations
-ENV CGO_ENABLED=0
-RUN go build -ldflags="-s -w" -trimpath -o main .
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+ARG GOAMD64=v3
+RUN set -eux; \
+    export CGO_ENABLED=0; \
+    export GOOS="${TARGETOS}"; \
+    export GOARCH="${TARGETARCH}"; \
+    if [ "${GOARCH}" = "amd64" ]; then \
+        export GOAMD64="${GOAMD64}"; \
+    fi; \
+    go build -ldflags="-s -w" -trimpath -o main .
 
 # Use a minimal image to run the binary safely
 # PROD
-FROM alpine:3
+FROM alpine:3 AS runtime
 ARG ASSET_VERSION=dev
 # DEV - we need debian for debugging tools and to avoid musl issues
 #FROM debian:bookworm-slim
@@ -88,4 +95,5 @@ RUN sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html && \
 USER appuser:appuser
 
 # Run the binary
-CMD ["./main"]
+EXPOSE 8080
+ENTRYPOINT ["/app/main"]

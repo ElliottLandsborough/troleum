@@ -1,101 +1,124 @@
-# Name of the Docker image
-IMAGE_NAME = troleum-app:latest
+IMAGE_NAME ?= troleum-app:local
+CONTAINER_NAME ?= troleum_app
+HOST_PORT ?= 8080
+CONTAINER_PORT ?= 8080
+LOCAL_ENV_FILE ?= .env
+LOCAL_JSON_DIR ?= $(CURDIR)/json
+LOCAL_STATIC_DIR ?= $(CURDIR)/static
 
-# Remote host architecture (current server is amd64)
-REMOTE_PLATFORM = linux/amd64
+REMOTE_IMAGE_NAME ?= troleum-app:runtime
+REMOTE_IMAGE_TAR ?= troleum_runtime.tar
+REMOTE_HOST ?= golf2
+REMOTE_PLATFORM ?= linux/amd64
+REMOTE_ENGINE ?= podman
+REMOTE_UID ?= 1001:1001
+REMOTE_BASE_DIR ?= /home/deploy/troleum
+REMOTE_JSON_DIR ?= $(REMOTE_BASE_DIR)/json
+REMOTE_ENV_FILE_LOCAL ?= .env.prod
+REMOTE_ENV_FILE_REMOTE ?= .env
+REMOTE_CONTAINER_NAME ?= troleum_app
+REMOTE_HOST_PORT ?= 8080
+REMOTE_CONTAINER_PORT ?= 8080
+REMOTE_EXTRA_RUN_ARGS ?=
 
-# Remote host user UID:GID for the deploy user
-REMOTE_UID = 1001:1001
-
-# App container name
-APP_CONTAINER_NAME = troleum_app
-
-# Binary name
-BINARY = main
-
-# Build-time cache bust token for static assets in production images
+GOAMD64 ?= v3
 ASSET_VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)-$(shell date +%Y%m%d%H%M%S)
 
-# Default target - use Docker Compose
-.PHONY: run
-run:
-	docker-compose up -d
+.PHONY: help build run stop restart logs logs-app open clean test rebuildrun \
+	build-remote-image save-image send-image send-prod-env run-remote deploy-to-production delete-local-image-tar remote-logs
 
-# Build with Docker Compose
-.PHONY: build
+help:
+	@echo "Available targets:"
+	@echo "  make build    - docker build the local image"
+	@echo "  make run      - build and run the local app with .env loaded by docker run"
+	@echo "  make stop     - stop and remove the local container"
+	@echo "  make restart  - stop, rebuild, and run again"
+	@echo "  make logs     - follow local app logs"
+	@echo "  make open     - open the site in your browser"
+	@echo "  make clean    - stop the app and remove local images/tars"
+	@echo "  make test     - run Go tests"
+	@echo "  make build-remote-image   - build the production runtime image for $(REMOTE_PLATFORM)"
+	@echo "  make save-image           - save the production image to a tar file"
+	@echo "  make send-image           - upload the image tar to the remote host"
+	@echo "  make send-prod-env        - upload $(REMOTE_ENV_FILE_LOCAL) to the remote host"
+	@echo "  make run-remote           - load and run the container on the remote host with podman"
+	@echo "  make deploy-to-production - test, build, ship, and run on the remote host"
+	@echo "  make remote-logs          - follow remote container logs"
+	@echo ""
+	@echo "Build tuning vars:"
+	@echo "  GOAMD64=$(GOAMD64)"
+	@echo "  ASSET_VERSION=$(ASSET_VERSION)"
+	@echo "  LOCAL_ENV_FILE=$(LOCAL_ENV_FILE)"
+	@echo "  REMOTE_EXTRA_RUN_ARGS=$(REMOTE_EXTRA_RUN_ARGS)"
+
 build:
-	docker-compose build
+	docker build \
+		--build-arg ASSET_VERSION=$(ASSET_VERSION) \
+		--build-arg GOAMD64=$(GOAMD64) \
+		--target runtime -t $(IMAGE_NAME) .
 
-# Run application tests locally before packaging or deploy steps
-.PHONY: test
+run: stop
+	@test -f $(LOCAL_ENV_FILE) || { echo "missing $(LOCAL_ENV_FILE)"; exit 1; }
+	mkdir -p $(LOCAL_JSON_DIR)
+	$(MAKE) build
+	docker run -d --name $(CONTAINER_NAME) --restart unless-stopped \
+		--env-file $(LOCAL_ENV_FILE) \
+		-p $(HOST_PORT):$(CONTAINER_PORT) \
+		-v $(LOCAL_JSON_DIR):/app/json \
+		-v $(LOCAL_STATIC_DIR):/app/static \
+		$(IMAGE_NAME)
+	@echo "Troleum running at http://localhost:$(HOST_PORT)"
+
+stop:
+	docker rm -f $(CONTAINER_NAME) >/dev/null 2>&1 || true
+
+restart: stop run
+
+logs:
+	docker logs -f $(CONTAINER_NAME)
+
+logs-app: logs
+
+open:
+	open http://localhost:$(HOST_PORT)
+
 test:
 	go test ./app -count=1
 
-# Clean up the binary and containers
-.PHONY: clean
-clean:
-	rm -f $(BINARY)
-	docker-compose down || true
-	docker rm -f $(APP_CONTAINER_NAME) || true
+clean: stop
+	docker rmi -f $(IMAGE_NAME) >/dev/null 2>&1 || true
+	rm -f $(REMOTE_IMAGE_TAR)
 
-# Full rebuild without cache
-.PHONY: rebuildrun
-rebuildrun:
-	$(MAKE) test
-	docker-compose down || true
-	docker system prune -af
-	docker rmi -f $(IMAGE_NAME) || true
-	docker rm -f $(APP_CONTAINER_NAME) || true
-	$(MAKE) clean
-	$(MAKE) run
-	$(MAKE) logs-app
+rebuildrun: test stop clean run logs
 
-# View logs
-.PHONY: logs
-logs:
-	docker-compose logs -f
-
-# View app logs only
-.PHONY: logs-app
-logs-app:
-	docker logs -f troleum_app
-
-# Stop all services
-.PHONY: stop
-stop:
-	docker-compose down
-
-# prod only commands:
-deploy-to-production: test save-image send-image send-prod-env run-remote
-
-# save docker image to file for distribution
-.PHONY: save-image
-save-image:
-	$(MAKE) build-remote-image
-	docker save $(IMAGE_NAME) -o troleum_image.tar
-
-.PHONY: build-remote-image
 build-remote-image:
-	docker buildx build --platform $(REMOTE_PLATFORM) --build-arg ASSET_VERSION=$(ASSET_VERSION) --load -t $(IMAGE_NAME) .
+	docker buildx build --platform $(REMOTE_PLATFORM) \
+		--build-arg ASSET_VERSION=$(ASSET_VERSION) \
+		--build-arg GOAMD64=$(GOAMD64) \
+		--target runtime --load -t $(REMOTE_IMAGE_NAME) .
 
-.PHONY: send-prod-env
-send-prod-env:
-	ssh troleumdeploy "mkdir -p /home/deploy/troleum && chmod 700 /home/deploy/troleum"
-	scp .env.prod troleumdeploy:/home/deploy/troleum/.env
-	ssh troleumdeploy "chmod 600 /home/deploy/troleum/.env"
+save-image: build-remote-image
+	docker save $(REMOTE_IMAGE_NAME) -o $(REMOTE_IMAGE_TAR)
 
-# send docker image to remote server over scp
-.PHONY: send-image
 send-image:
-	ssh troleumdeploy "mkdir -p /home/deploy/troleum && chmod 700 /home/deploy/troleum"
-	scp troleum_image.tar troleumdeploy:/home/deploy/troleum/troleum_image.tar
-	ssh troleumdeploy "mkdir -p /home/deploy/troleum/json && chmod 700 /home/deploy/troleum/json"
-	ssh troleumdeploy "chmod 600 /home/deploy/troleum/.env /home/deploy/troleum/troleum_image.tar"
+	ssh $(REMOTE_HOST) "mkdir -p $(REMOTE_BASE_DIR) $(REMOTE_JSON_DIR) && chmod 700 $(REMOTE_BASE_DIR) $(REMOTE_JSON_DIR)"
+	scp $(REMOTE_IMAGE_TAR) $(REMOTE_HOST):$(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)
 
-# execute image on remote server
-.PHONY: run-remote
+send-prod-env:
+	ssh $(REMOTE_HOST) "mkdir -p $(REMOTE_BASE_DIR) && chmod 700 $(REMOTE_BASE_DIR)"
+	scp $(REMOTE_ENV_FILE_LOCAL) $(REMOTE_HOST):$(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE)
+	ssh $(REMOTE_HOST) "chmod 600 $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE)"
+
 run-remote:
-	ssh troleumdeploy "docker rm -f troleum_app || true"
-	ssh troleumdeploy "docker load -i /home/deploy/troleum/troleum_image.tar && docker rm -f $(APP_CONTAINER_NAME) || true && docker run --user $(REMOTE_UID) -d --restart always --platform $(REMOTE_PLATFORM) -p 8080:8080 -v /home/deploy/troleum/json:/app/json:Z --name $(APP_CONTAINER_NAME) --env-file /home/deploy/troleum/.env $(IMAGE_NAME)"
-	ssh troleumdeploy "rm -f /home/deploy/troleum/troleum_image.tar"
-	ssh troleumdeploy "docker logs -f $(APP_CONTAINER_NAME)"
+	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) load -i $(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)"
+	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) rm -f $(REMOTE_CONTAINER_NAME) >/dev/null 2>&1 || true"
+	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) run -d --restart unless-stopped --platform $(REMOTE_PLATFORM) --user $(REMOTE_UID) -p $(REMOTE_HOST_PORT):$(REMOTE_CONTAINER_PORT) -v $(REMOTE_JSON_DIR):/app/json:Z --env-file $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE) $(REMOTE_EXTRA_RUN_ARGS) --name $(REMOTE_CONTAINER_NAME) $(REMOTE_IMAGE_NAME)"
+	ssh $(REMOTE_HOST) "rm -f $(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)"
+
+deploy-to-production: test save-image send-image send-prod-env run-remote delete-local-image-tar
+
+delete-local-image-tar:
+	rm -f $(REMOTE_IMAGE_TAR)
+
+remote-logs:
+	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) logs -f $(REMOTE_CONTAINER_NAME)"

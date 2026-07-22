@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -29,7 +28,6 @@ var (
 	mainHasUKGeofenceData               = hasUKGeofenceData
 	mainInitEnrichmentTimer             = initEnrichmentTimer
 	mainLoadDataFromJSONFiles           = loadDataFromJSONFiles
-	mainLoadDotEnv                      = loadDotEnv
 	mainLoadConfig                      = LoadConfig
 	mainStartWebServer                  = StartWebServer
 	mainNewOAuthClient                  = NewOAuthClient
@@ -64,11 +62,6 @@ func main() {
 
 	// enrich memory from json files on startup
 	mainLoadDataFromJSONFiles()
-
-	// load the .env file manually
-	if err := mainLoadDotEnv(".env"); err != nil {
-		fmt.Println("Warning: could not load .env file:", err)
-	}
 
 	cfg := mainLoadConfig()
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"os"
 	"testing"
@@ -17,7 +16,6 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 	origHasUKGeofenceData := mainHasUKGeofenceData
 	origInitEnrichmentTimer := mainInitEnrichmentTimer
 	origLoadDataFromJSONFiles := mainLoadDataFromJSONFiles
-	origLoadDotEnv := mainLoadDotEnv
 	origLoadConfig := mainLoadConfig
 	origStartWebServer := mainStartWebServer
 	origNewOAuthClient := mainNewOAuthClient
@@ -37,7 +35,6 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 		mainHasUKGeofenceData = origHasUKGeofenceData
 		mainInitEnrichmentTimer = origInitEnrichmentTimer
 		mainLoadDataFromJSONFiles = origLoadDataFromJSONFiles
-		mainLoadDotEnv = origLoadDotEnv
 		mainLoadConfig = origLoadConfig
 		mainStartWebServer = origStartWebServer
 		mainNewOAuthClient = origNewOAuthClient
@@ -60,7 +57,6 @@ func TestMainStartupAndGracefulShutdown(t *testing.T) {
 	mainHasUKGeofenceData = func() bool { return true }
 	mainInitEnrichmentTimer = func(context.Context) {}
 	mainLoadDataFromJSONFiles = func() {}
-	mainLoadDotEnv = func(string) error { return errors.New("missing") }
 	mainLoadConfig = func() Config {
 		return Config{ClientID: "id", ClientSecret: "secret"}
 	}

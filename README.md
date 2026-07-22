@@ -37,7 +37,7 @@ Troleum uses data from the UK government Fuel Finder collection:
 
 - Go installed locally
 - Docker available locally
-- A `.env` file containing the required OAuth credentials
+- A `.env` file containing the required OAuth credentials for local development
 
 Required environment variables:
 
@@ -48,8 +48,16 @@ Required environment variables:
 ### Run Locally
 
 ```bash
+make run
+```
+
+Local container runs load `.env` through `docker run --env-file`. The app itself now expects runtime environment variables to already be present.
+
+If you want to run the Go binary directly on your host instead of through Docker, you can still source the env file first:
+
+```bash
 source load_env.sh
-make rebuildrun
+go run ./app
 ```
 
 Useful commands:
@@ -75,11 +83,13 @@ go test ./app -count=1
 
 ## Production Deploy
 
-Production deploys are handled through the Makefile and now run tests before packaging and shipping the image.
+Production deploys are handled through the Makefile, run tests before packaging, and use a host-side env file rather than baking secrets into the image.
 
 ```bash
 make deploy-to-production
 ```
+
+This deploy flow builds an image tar locally with Docker, copies both the image tar and `.env.prod` to the remote host, then runs the container there with Podman using `--env-file`.
 
 The production image build also stamps a fresh static asset version into the HTML so CSS and JavaScript URLs are cache-busted on each deploy.
 
