@@ -15,6 +15,7 @@ REMOTE_BASE_DIR ?= /home/deploy/troleum
 REMOTE_JSON_DIR ?= $(REMOTE_BASE_DIR)/json
 REMOTE_ENV_FILE_LOCAL ?= .env.prod
 REMOTE_ENV_FILE_REMOTE ?= .env
+REMOTE_ENV_MODE ?= production
 REMOTE_CONTAINER_NAME ?= troleum_app
 REMOTE_HOST_PORT ?= 8080
 REMOTE_CONTAINER_PORT ?= 8080
@@ -24,7 +25,7 @@ GOAMD64 ?= v3
 ASSET_VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)-$(shell date +%Y%m%d%H%M%S)
 
 .PHONY: help build run stop restart logs logs-app open clean test rebuildrun \
-	build-remote-image save-image send-image send-prod-env run-remote deploy-to-production delete-local-image-tar remote-logs
+	build-remote-image save-image send-image send-prod-env run-remote deploy-to-production deploy-testing-to-production delete-local-image-tar remote-logs
 
 help:
 	@echo "Available targets:"
@@ -39,15 +40,18 @@ help:
 	@echo "  make build-remote-image   - build the production runtime image for $(REMOTE_PLATFORM)"
 	@echo "  make save-image           - save the production image to a tar file"
 	@echo "  make send-image           - upload the image tar to the remote host"
-	@echo "  make send-prod-env        - upload $(REMOTE_ENV_FILE_LOCAL) to the remote host"
+	@echo "  make send-prod-env        - upload the selected remote env file to the remote host"
 	@echo "  make run-remote           - load and run the container on the remote host with podman"
 	@echo "  make deploy-to-production - test, build, ship, and run on the remote host"
+	@echo "  make deploy-testing-to-production - deploy to the production host using $(LOCAL_ENV_FILE) instead of .env.prod"
 	@echo "  make remote-logs          - follow remote container logs"
 	@echo ""
 	@echo "Build tuning vars:"
 	@echo "  GOAMD64=$(GOAMD64)"
 	@echo "  ASSET_VERSION=$(ASSET_VERSION)"
 	@echo "  LOCAL_ENV_FILE=$(LOCAL_ENV_FILE)"
+	@echo "  REMOTE_ENV_FILE_LOCAL=$(REMOTE_ENV_FILE_LOCAL)"
+	@echo "  REMOTE_ENV_MODE=$(REMOTE_ENV_MODE)"
 	@echo "  REMOTE_EXTRA_RUN_ARGS=$(REMOTE_EXTRA_RUN_ARGS)"
 
 build:
@@ -63,8 +67,6 @@ run: stop
 	docker run -d --name $(CONTAINER_NAME) --restart unless-stopped \
 		--env-file $(LOCAL_ENV_FILE) \
 		-p $(HOST_PORT):$(CONTAINER_PORT) \
-		-v $(LOCAL_JSON_DIR):/app/json \
-		-v $(LOCAL_STATIC_DIR):/app/static \
 		$(IMAGE_NAME)
 	@echo "Troleum running at http://localhost:$(HOST_PORT)"
 
@@ -104,6 +106,7 @@ send-image:
 	scp $(REMOTE_IMAGE_TAR) $(REMOTE_HOST):$(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)
 
 send-prod-env:
+	@test -f $(REMOTE_ENV_FILE_LOCAL) || { echo "missing $(REMOTE_ENV_FILE_LOCAL) for REMOTE_ENV_MODE=$(REMOTE_ENV_MODE)"; exit 1; }
 	ssh $(REMOTE_HOST) "mkdir -p $(REMOTE_BASE_DIR) && chmod 700 $(REMOTE_BASE_DIR)"
 	scp $(REMOTE_ENV_FILE_LOCAL) $(REMOTE_HOST):$(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE)
 	ssh $(REMOTE_HOST) "chmod 600 $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE)"
@@ -111,10 +114,13 @@ send-prod-env:
 run-remote:
 	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) load -i $(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)"
 	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) rm -f $(REMOTE_CONTAINER_NAME) >/dev/null 2>&1 || true"
-	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) run -d --restart unless-stopped --platform $(REMOTE_PLATFORM) -p $(REMOTE_HOST_PORT):$(REMOTE_CONTAINER_PORT) -v $(REMOTE_JSON_DIR):/app/json:Z --env-file $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE) $(REMOTE_EXTRA_RUN_ARGS) --name $(REMOTE_CONTAINER_NAME) $(REMOTE_IMAGE_NAME)"
+	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) run -d --restart unless-stopped --platform $(REMOTE_PLATFORM) -p $(REMOTE_HOST_PORT):$(REMOTE_CONTAINER_PORT) --env-file $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE) $(REMOTE_EXTRA_RUN_ARGS) --name $(REMOTE_CONTAINER_NAME) $(REMOTE_IMAGE_NAME)"
 	ssh $(REMOTE_HOST) "rm -f $(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)"
 
 deploy-to-production: test save-image send-image send-prod-env run-remote delete-local-image-tar
+
+deploy-testing-to-production:
+	$(MAKE) deploy-to-production REMOTE_ENV_MODE=testing REMOTE_ENV_FILE_LOCAL=$(LOCAL_ENV_FILE)
 
 delete-local-image-tar:
 	rm -f $(REMOTE_IMAGE_TAR)
