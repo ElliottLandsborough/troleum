@@ -11,7 +11,6 @@ REMOTE_IMAGE_TAR ?= troleum_runtime.tar
 REMOTE_HOST ?= golf2
 REMOTE_PLATFORM ?= linux/amd64
 REMOTE_ENGINE ?= podman
-REMOTE_UID ?= 1001:1001
 REMOTE_BASE_DIR ?= /home/deploy/troleum
 REMOTE_JSON_DIR ?= $(REMOTE_BASE_DIR)/json
 REMOTE_ENV_FILE_LOCAL ?= .env.prod
@@ -112,7 +111,7 @@ send-prod-env:
 run-remote:
 	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) load -i $(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)"
 	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) rm -f $(REMOTE_CONTAINER_NAME) >/dev/null 2>&1 || true"
-	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) run -d --restart unless-stopped --platform $(REMOTE_PLATFORM) --user $(REMOTE_UID) -p $(REMOTE_HOST_PORT):$(REMOTE_CONTAINER_PORT) -v $(REMOTE_JSON_DIR):/app/json:Z --env-file $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE) $(REMOTE_EXTRA_RUN_ARGS) --name $(REMOTE_CONTAINER_NAME) $(REMOTE_IMAGE_NAME)"
+	ssh $(REMOTE_HOST) "$(REMOTE_ENGINE) run -d --restart unless-stopped --platform $(REMOTE_PLATFORM) -p $(REMOTE_HOST_PORT):$(REMOTE_CONTAINER_PORT) -v $(REMOTE_JSON_DIR):/app/json:Z --env-file $(REMOTE_BASE_DIR)/$(REMOTE_ENV_FILE_REMOTE) $(REMOTE_EXTRA_RUN_ARGS) --name $(REMOTE_CONTAINER_NAME) $(REMOTE_IMAGE_NAME)"
 	ssh $(REMOTE_HOST) "rm -f $(REMOTE_BASE_DIR)/$(REMOTE_IMAGE_TAR)"
 
 deploy-to-production: test save-image send-image send-prod-env run-remote delete-local-image-tar
