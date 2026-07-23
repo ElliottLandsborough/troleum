@@ -43,57 +43,49 @@ RUN set -eux; \
     fi; \
     go build -ldflags="-s -w" -trimpath -o main .
 
-# Use a minimal image to run the binary safely
-# PROD
-FROM alpine:3 AS runtime
+# Prepare runtime assets and stamped static files.
+FROM alpine:3 AS runtime-prep
 ARG ASSET_VERSION=dev
-# DEV - we need debian for debugging tools and to avoid musl issues
-#FROM debian:bookworm-slim
-
-# Create a non-root user to run the app securely (alpine syntax)
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
-
-# Create non-root user (Debian syntax)
-#RUN groupadd -g 1000 appuser && \
-#    useradd -u 1000 -g appuser -s /bin/bash -m appuser
-# Install CA certificates for HTTPS requests (Debian only, not needed in alpine since it's included in the base image)
-#RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Create json directory for data persistence
-RUN mkdir -p json
-
-# Copy binary and set permissions (read/execute only)
-COPY --from=builder --chown=appuser:appuser --chmod=555 /app/main .
+# Copy binary and data files into a prepared filesystem tree.
+COPY --from=builder /app/main /app/main
 
 # Copy OSM-derived UK boundary data used for coordinate correction
-COPY --chown=appuser:appuser --chmod=444 app/uk_land_osm.json ./uk_land_osm.json
+COPY app/uk_land_osm.json ./uk_land_osm.json
 
 # Copy image assets (read-only, not executable)
-COPY --chown=appuser:appuser --chmod=555 assets/favicon.ico ./assets/favicon.ico
-COPY --chown=appuser:appuser --chmod=555 assets/favicon-16x16.png ./assets/favicon-16x16.png
-COPY --chown=appuser:appuser --chmod=555 assets/favicon-32x32.png ./assets/favicon-32x32.png
-COPY --chown=appuser:appuser --chmod=555 assets/favicon-48x48.png ./assets/favicon-48x48.png
-COPY --chown=appuser:appuser --chmod=555 assets/apple-touch-icon-180x180.png ./assets/apple-touch-icon-180x180.png
-COPY --chown=appuser:appuser --chmod=555 assets/apple-touch-icon.png ./assets/apple-touch-icon.png
-COPY --chown=appuser:appuser --chmod=555 assets/android-chrome-192x192.png ./assets/android-chrome-192x192.png
-COPY --chown=appuser:appuser --chmod=555 assets/android-chrome-512x512.png ./assets/android-chrome-512x512.png
+COPY assets/favicon.ico ./assets/favicon.ico
+COPY assets/favicon-16x16.png ./assets/favicon-16x16.png
+COPY assets/favicon-32x32.png ./assets/favicon-32x32.png
+COPY assets/favicon-48x48.png ./assets/favicon-48x48.png
+COPY assets/apple-touch-icon-180x180.png ./assets/apple-touch-icon-180x180.png
+COPY assets/apple-touch-icon.png ./assets/apple-touch-icon.png
+COPY assets/android-chrome-192x192.png ./assets/android-chrome-192x192.png
+COPY assets/android-chrome-512x512.png ./assets/android-chrome-512x512.png
 
 # Copy static/web files (read-only)
-COPY --chown=appuser:appuser --chmod=555 static ./static
+COPY static ./static
 
-# Stamp static asset URLs at build time so each deployed image gets a fresh cache-bust token.
-# Ensure runtime paths are writable by the non-root user
-RUN sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html && \
-    mkdir -p /app/json && \
-    chown -R appuser:appuser /app && \
-    chmod 755 /app/json
+# Stamp static asset URLs at build time and pre-create the writable data directory.
+RUN set -eux; \
+    sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html; \
+    mkdir -p /app/json; \
+    chmod 555 /app/main; \
+    chmod 444 /app/uk_land_osm.json; \
+    find /app/assets -type d -exec chmod 555 {} \;; \
+    find /app/assets -type f -exec chmod 444 {} \;; \
+    find /app/static -type d -exec chmod 555 {} \;; \
+    find /app/static -type f -exec chmod 444 {} \;; \
+    chmod 777 /app/json
 
-# Run as non-root user
-USER appuser:appuser
+# Use a minimal runtime image with a built-in non-root user.
+FROM gcr.io/distroless/static-debian13:nonroot AS runtime
 
-# Run the binary
+WORKDIR /app
+
+COPY --from=runtime-prep /app /app
+
 EXPOSE 8080
 ENTRYPOINT ["/app/main"]
