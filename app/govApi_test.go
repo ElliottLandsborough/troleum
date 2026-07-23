@@ -839,7 +839,7 @@ func TestFetchPricesPageLastPageDetection(t *testing.T) {
 	})
 }
 
-func TestFetchStationsPageWrites500DumpFile(t *testing.T) {
+func TestFetchStationsPageDoesNotWrite500DumpFile(t *testing.T) {
 	originalQueue := globalRetryQueue
 	globalRetryQueue = &RetryQueue{requests: make([]RetryRequest, 0)}
 	t.Cleanup(func() { globalRetryQueue = originalQueue })
@@ -862,34 +862,14 @@ func TestFetchStationsPageWrites500DumpFile(t *testing.T) {
 	}
 
 	errorDir := filepath.Join("json", "errors")
-	entries, err := os.ReadDir(errorDir)
-	if err != nil {
-		t.Fatalf("expected error dump directory to exist: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected exactly one error dump file, got %d", len(entries))
-	}
-	if !strings.Contains(entries[0].Name(), "stations_page_11_status_500") {
-		t.Fatalf("unexpected dump filename: %s", entries[0].Name())
-	}
-
-	content, err := os.ReadFile(filepath.Join(errorDir, entries[0].Name()))
-	if err != nil {
-		t.Fatalf("failed reading dump file: %v", err)
-	}
-	contentStr := string(content)
-	if !strings.Contains(contentStr, "request_type=stations_page") || !strings.Contains(contentStr, "status=500") {
-		t.Fatalf("expected dump file to include metadata, got: %s", contentStr)
-	}
-	if !strings.Contains(contentStr, "--- response_body_begin ---") || !strings.Contains(contentStr, "--- response_body_end ---") {
-		t.Fatalf("expected dump file to include body markers, got: %s", contentStr)
-	}
-	if !strings.Contains(contentStr, "stations server error body") {
-		t.Fatalf("expected dump file to contain response body, got: %s", string(content))
+	if _, err := os.Stat(errorDir); err == nil {
+		t.Fatalf("expected no error dump directory to be created, but %s exists", errorDir)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("expected not-exist for error dump directory, got: %v", err)
 	}
 }
 
-func TestFetchPricesPageWrites500DumpFile(t *testing.T) {
+func TestFetchPricesPageDoesNotWrite500DumpFile(t *testing.T) {
 	originalQueue := globalRetryQueue
 	globalRetryQueue = &RetryQueue{requests: make([]RetryRequest, 0)}
 	t.Cleanup(func() { globalRetryQueue = originalQueue })
@@ -912,29 +892,9 @@ func TestFetchPricesPageWrites500DumpFile(t *testing.T) {
 	}
 
 	errorDir := filepath.Join("json", "errors")
-	entries, err := os.ReadDir(errorDir)
-	if err != nil {
-		t.Fatalf("expected error dump directory to exist: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected exactly one error dump file, got %d", len(entries))
-	}
-	if !strings.Contains(entries[0].Name(), "prices_page_12_status_500") {
-		t.Fatalf("unexpected dump filename: %s", entries[0].Name())
-	}
-
-	content, err := os.ReadFile(filepath.Join(errorDir, entries[0].Name()))
-	if err != nil {
-		t.Fatalf("failed reading dump file: %v", err)
-	}
-	contentStr := string(content)
-	if !strings.Contains(contentStr, "request_type=prices_page") || !strings.Contains(contentStr, "status=500") {
-		t.Fatalf("expected dump file to include metadata, got: %s", contentStr)
-	}
-	if !strings.Contains(contentStr, "--- response_body_begin ---") || !strings.Contains(contentStr, "--- response_body_end ---") {
-		t.Fatalf("expected dump file to include body markers, got: %s", contentStr)
-	}
-	if !strings.Contains(contentStr, "prices server error body") {
-		t.Fatalf("expected dump file to contain response body, got: %s", string(content))
+	if _, err := os.Stat(errorDir); err == nil {
+		t.Fatalf("expected no error dump directory to be created, but %s exists", errorDir)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("expected not-exist for error dump directory, got: %v", err)
 	}
 }

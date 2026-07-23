@@ -293,9 +293,6 @@ func TestSetupWebServer(t *testing.T) {
 		t.Fatalf("expected data to be JSON object")
 	}
 
-	if _, ok := data["disk_cache"]; !ok {
-		t.Fatalf("expected disk_cache section in stats payload")
-	}
 	if _, ok := data["memory"]; !ok {
 		t.Fatalf("expected memory section in stats payload")
 	}

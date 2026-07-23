@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,13 +13,6 @@ func TestStatsAPIHandlerSuccess(t *testing.T) {
 	resetGlobalMemoryStateForTest()
 	t.Cleanup(resetGlobalMemoryStateForTest)
 	withTempWorkingDir(t)
-
-	if err := os.MkdirAll("json", 0o755); err != nil {
-		t.Fatalf("mkdir json: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join("json", "stations_page_1.json"), []byte("{}"), 0o600); err != nil {
-		t.Fatalf("write json file: %v", err)
-	}
 
 	req := httptest.NewRequest(http.MethodGet, "/stats", nil)
 	w := httptest.NewRecorder()
@@ -56,131 +47,6 @@ func TestStatsAPIHandlerWriteFailure(t *testing.T) {
 
 	if fw.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
 		t.Fatalf("expected error response content type, got %q", fw.Header().Get("Content-Type"))
-	}
-}
-
-func TestCollectDiskCacheStatsMissingDirectory(t *testing.T) {
-	withTempWorkingDir(t)
-
-	now := time.Now()
-	stats := collectDiskCacheStats(now)
-
-	if stats.JSONFileCount != 0 {
-		t.Fatalf("expected 0 json files when directory is missing, got %d", stats.JSONFileCount)
-	}
-	if stats.OldestFileName != "" {
-		t.Fatalf("expected no oldest file name, got %q", stats.OldestFileName)
-	}
-}
-
-func TestCollectDiskCacheStatsWithFiles(t *testing.T) {
-	withTempWorkingDir(t)
-
-	if err := os.MkdirAll("json", 0o755); err != nil {
-		t.Fatalf("mkdir json: %v", err)
-	}
-
-	now := time.Now().UTC().Truncate(time.Second)
-	oldestPath := filepath.Join("json", "stations_page_1.json")
-	newestPath := filepath.Join("json", "prices_page_2.json")
-	if err := os.WriteFile(oldestPath, []byte("{}"), 0o600); err != nil {
-		t.Fatalf("write oldest file: %v", err)
-	}
-	if err := os.WriteFile(newestPath, []byte("{}"), 0o600); err != nil {
-		t.Fatalf("write newest file: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join("json", "README.txt"), []byte("not-json"), 0o600); err != nil {
-		t.Fatalf("write non-json file: %v", err)
-	}
-
-	oldestMod := now.Add(-20 * time.Minute)
-	newestMod := now.Add(-2 * time.Minute)
-	if err := os.Chtimes(oldestPath, oldestMod, oldestMod); err != nil {
-		t.Fatalf("chtimes oldest file: %v", err)
-	}
-	if err := os.Chtimes(newestPath, newestMod, newestMod); err != nil {
-		t.Fatalf("chtimes newest file: %v", err)
-	}
-
-	stats := collectDiskCacheStats(now)
-	if stats.JSONFileCount != 2 {
-		t.Fatalf("expected 2 json files, got %d", stats.JSONFileCount)
-	}
-	if stats.StationsJSONFileCount != 1 {
-		t.Fatalf("expected 1 stations json file, got %d", stats.StationsJSONFileCount)
-	}
-	if stats.PricesJSONFileCount != 1 {
-		t.Fatalf("expected 1 prices json file, got %d", stats.PricesJSONFileCount)
-	}
-	if stats.OldestStationsFileName != "stations_page_1.json" {
-		t.Fatalf("expected oldest stations file stations_page_1.json, got %q", stats.OldestStationsFileName)
-	}
-	if stats.NewestStationsFileName != "stations_page_1.json" {
-		t.Fatalf("expected newest stations file stations_page_1.json, got %q", stats.NewestStationsFileName)
-	}
-	if stats.OldestPricesFileName != "prices_page_2.json" {
-		t.Fatalf("expected oldest prices file prices_page_2.json, got %q", stats.OldestPricesFileName)
-	}
-	if stats.NewestPricesFileName != "prices_page_2.json" {
-		t.Fatalf("expected newest prices file prices_page_2.json, got %q", stats.NewestPricesFileName)
-	}
-	if stats.OldestStationsFileAgeSeconds < 1199 || stats.OldestStationsFileAgeSeconds > 1201 {
-		t.Fatalf("expected oldest stations age around 1200s, got %d", stats.OldestStationsFileAgeSeconds)
-	}
-	if stats.NewestStationsFileAgeSeconds < 1199 || stats.NewestStationsFileAgeSeconds > 1201 {
-		t.Fatalf("expected newest stations age around 1200s, got %d", stats.NewestStationsFileAgeSeconds)
-	}
-	if stats.OldestPricesFileAgeSeconds < 119 || stats.OldestPricesFileAgeSeconds > 121 {
-		t.Fatalf("expected oldest prices age around 120s, got %d", stats.OldestPricesFileAgeSeconds)
-	}
-	if stats.NewestPricesFileAgeSeconds < 119 || stats.NewestPricesFileAgeSeconds > 121 {
-		t.Fatalf("expected newest prices age around 120s, got %d", stats.NewestPricesFileAgeSeconds)
-	}
-	if stats.OldestFileName != "stations_page_1.json" {
-		t.Fatalf("expected oldest file stations_page_1.json, got %q", stats.OldestFileName)
-	}
-	if stats.NewestFileName != "prices_page_2.json" {
-		t.Fatalf("expected newest file prices_page_2.json, got %q", stats.NewestFileName)
-	}
-	if stats.OldestFileAgeSeconds < 1199 || stats.OldestFileAgeSeconds > 1201 {
-		t.Fatalf("expected oldest age around 1200s, got %d", stats.OldestFileAgeSeconds)
-	}
-	if stats.NewestFileAgeSeconds < 119 || stats.NewestFileAgeSeconds > 121 {
-		t.Fatalf("expected newest age around 120s, got %d", stats.NewestFileAgeSeconds)
-	}
-}
-
-func TestCollectDiskCacheStatsNoJSONFiles(t *testing.T) {
-	withTempWorkingDir(t)
-
-	if err := os.MkdirAll("json", 0o755); err != nil {
-		t.Fatalf("mkdir json: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join("json", "notes.txt"), []byte("x"), 0o600); err != nil {
-		t.Fatalf("write non-json file: %v", err)
-	}
-
-	stats := collectDiskCacheStats(time.Now())
-	if stats.JSONFileCount != 0 {
-		t.Fatalf("expected 0 json files, got %d", stats.JSONFileCount)
-	}
-	if stats.StationsJSONFileCount != 0 {
-		t.Fatalf("expected 0 stations json files, got %d", stats.StationsJSONFileCount)
-	}
-	if stats.PricesJSONFileCount != 0 {
-		t.Fatalf("expected 0 prices json files, got %d", stats.PricesJSONFileCount)
-	}
-	if stats.OldestStationsFileName != "" {
-		t.Fatalf("expected no oldest stations file, got %q", stats.OldestStationsFileName)
-	}
-	if stats.NewestStationsFileName != "" {
-		t.Fatalf("expected no newest stations file, got %q", stats.NewestStationsFileName)
-	}
-	if stats.OldestPricesFileName != "" {
-		t.Fatalf("expected no oldest prices file, got %q", stats.OldestPricesFileName)
-	}
-	if stats.NewestPricesFileName != "" {
-		t.Fatalf("expected no newest prices file, got %q", stats.NewestPricesFileName)
 	}
 }
 
@@ -380,10 +246,6 @@ func TestCollectTimerStatsAndRuntimeStats(t *testing.T) {
 }
 
 func TestEvaluateStatsHealthOK(t *testing.T) {
-	disk := diskCacheInfo{
-		JSONFileCount:        10,
-		OldestFileAgeSeconds: int64((30 * time.Minute).Seconds()),
-	}
 	memory := memoryInfo{
 		CachedStationPagesCount:           5,
 		CachedPricePagesCount:             5,
@@ -399,7 +261,7 @@ func TestEvaluateStatsHealthOK(t *testing.T) {
 		NetworkErrors:  2,
 	}
 
-	health := evaluateStatsHealth(disk, memory, gov)
+	health := evaluateStatsHealth(memory, gov)
 	if health.Status != "ok" {
 		t.Fatalf("expected health status ok, got %q", health.Status)
 	}
@@ -409,10 +271,6 @@ func TestEvaluateStatsHealthOK(t *testing.T) {
 }
 
 func TestEvaluateStatsHealthWarns(t *testing.T) {
-	disk := diskCacheInfo{
-		JSONFileCount:        0,
-		OldestFileAgeSeconds: int64((3 * time.Hour).Seconds()),
-	}
 	memory := memoryInfo{
 		CachedStationPagesCount:    0,
 		CachedPricePagesCount:      0,
@@ -426,7 +284,7 @@ func TestEvaluateStatsHealthWarns(t *testing.T) {
 		NetworkErrors:  2,
 	}
 
-	health := evaluateStatsHealth(disk, memory, gov)
+	health := evaluateStatsHealth(memory, gov)
 	if health.Status != "warn" {
 		t.Fatalf("expected health status warn, got %q", health.Status)
 	}
@@ -437,7 +295,6 @@ func TestEvaluateStatsHealthWarns(t *testing.T) {
 	}
 
 	wantReasons := []string{
-		"no_json_cache_files_found",
 		"no_cached_pages_in_memory",
 		"high_403_ratio",
 		"high_4xx_ratio",
@@ -482,13 +339,6 @@ func TestBuildScheduledTimerInfoAndCooldownInfoEdgeCases(t *testing.T) {
 }
 
 func TestEvaluateStatsHealthWarnsOnStaleDataAndUnavailableGovStats(t *testing.T) {
-	disk := diskCacheInfo{
-		JSONFileCount:                2,
-		StationsJSONFileCount:        1,
-		PricesJSONFileCount:          1,
-		OldestStationsFileAgeSeconds: int64((13 * time.Hour).Seconds()),
-		OldestPricesFileAgeSeconds:   int64((20 * time.Minute).Seconds()),
-	}
 	memory := memoryInfo{
 		CachedStationPagesCount:           1,
 		CachedPricePagesCount:             1,
@@ -498,7 +348,7 @@ func TestEvaluateStatsHealthWarnsOnStaleDataAndUnavailableGovStats(t *testing.T)
 	}
 	gov := govAPIInfo{StatsAvailable: false}
 
-	health := evaluateStatsHealth(disk, memory, gov)
+	health := evaluateStatsHealth(memory, gov)
 	if health.Status != "warn" {
 		t.Fatalf("expected health status warn, got %q", health.Status)
 	}
@@ -509,8 +359,6 @@ func TestEvaluateStatsHealthWarnsOnStaleDataAndUnavailableGovStats(t *testing.T)
 	}
 
 	wantReasons := []string{
-		"oldest_stations_json_file_is_stale",
-		"oldest_prices_json_file_is_stale",
 		"oldest_cached_station_page_in_memory_is_stale",
 		"oldest_cached_price_page_in_memory_is_stale",
 		"gov_api_stats_unavailable",

@@ -3,17 +3,12 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	goruntime "runtime"
 	"sort"
-	"strings"
 	"time"
 )
 
 const (
-	statsWarnOldestStationsJSONFileAge    = 12 * time.Hour
-	statsWarnOldestPricesJSONFileAge      = 15 * time.Minute
 	statsWarnOldestStationsMemoryCacheAge = 12 * time.Hour
 	statsWarnOldestPricesMemoryCacheAge   = 15 * time.Minute
 	statsWarn403RatioPercent              = 20.0
@@ -27,48 +22,17 @@ type statsResponse struct {
 }
 
 type statsData struct {
-	GeneratedAt string        `json:"generated_at"`
-	Health      healthInfo    `json:"health"`
-	DiskCache   diskCacheInfo `json:"disk_cache"`
-	Memory      memoryInfo    `json:"memory"`
-	GovAPI      govAPIInfo    `json:"gov_api"`
-	Timers      timersInfo    `json:"timers"`
-	Runtime     runtimeInfo   `json:"runtime"`
+	GeneratedAt string      `json:"generated_at"`
+	Health      healthInfo  `json:"health"`
+	Memory      memoryInfo  `json:"memory"`
+	GovAPI      govAPIInfo  `json:"gov_api"`
+	Timers      timersInfo  `json:"timers"`
+	Runtime     runtimeInfo `json:"runtime"`
 }
 
 type healthInfo struct {
 	Status  string   `json:"status"`
 	Reasons []string `json:"reasons,omitempty"`
-}
-
-type diskCacheInfo struct {
-	JSONFileCount                int    `json:"json_file_count"`
-	StationsJSONFileCount        int    `json:"stations_json_file_count"`
-	PricesJSONFileCount          int    `json:"prices_json_file_count"`
-	OldestStationsFileName       string `json:"oldest_stations_file_name,omitempty"`
-	OldestStationsFileModifiedAt string `json:"oldest_stations_file_modified_at,omitempty"`
-	OldestStationsFileAgeSeconds int64  `json:"oldest_stations_file_age_seconds"`
-	OldestStationsFileAgeHuman   string `json:"oldest_stations_file_age_human"`
-	NewestStationsFileName       string `json:"newest_stations_file_name,omitempty"`
-	NewestStationsFileModifiedAt string `json:"newest_stations_file_modified_at,omitempty"`
-	NewestStationsFileAgeSeconds int64  `json:"newest_stations_file_age_seconds"`
-	NewestStationsFileAgeHuman   string `json:"newest_stations_file_age_human"`
-	OldestPricesFileName         string `json:"oldest_prices_file_name,omitempty"`
-	OldestPricesFileModifiedAt   string `json:"oldest_prices_file_modified_at,omitempty"`
-	OldestPricesFileAgeSeconds   int64  `json:"oldest_prices_file_age_seconds"`
-	OldestPricesFileAgeHuman     string `json:"oldest_prices_file_age_human"`
-	NewestPricesFileName         string `json:"newest_prices_file_name,omitempty"`
-	NewestPricesFileModifiedAt   string `json:"newest_prices_file_modified_at,omitempty"`
-	NewestPricesFileAgeSeconds   int64  `json:"newest_prices_file_age_seconds"`
-	NewestPricesFileAgeHuman     string `json:"newest_prices_file_age_human"`
-	OldestFileName               string `json:"oldest_file_name,omitempty"`
-	OldestFileModifiedAt         string `json:"oldest_file_modified_at,omitempty"`
-	OldestFileAgeSeconds         int64  `json:"oldest_file_age_seconds"`
-	OldestFileAgeHuman           string `json:"oldest_file_age_human"`
-	NewestFileName               string `json:"newest_file_name,omitempty"`
-	NewestFileModifiedAt         string `json:"newest_file_modified_at,omitempty"`
-	NewestFileAgeSeconds         int64  `json:"newest_file_age_seconds"`
-	NewestFileAgeHuman           string `json:"newest_file_age_human"`
 }
 
 type memoryInfo struct {
@@ -146,19 +110,17 @@ var runtimeStatsProcessStartedAt = time.Now()
 
 func statsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	disk := collectDiskCacheStats(now)
 	memory := collectMemoryStats(now)
 	gov := collectGovAPIStats(now)
 	timers := collectTimerStats(now)
 	runtime := collectRuntimeStats(now)
-	health := evaluateStatsHealth(disk, memory, gov)
+	health := evaluateStatsHealth(memory, gov)
 
 	response := statsResponse{
 		Code: http.StatusOK,
 		Data: statsData{
 			GeneratedAt: now.UTC().Format(time.RFC3339),
 			Health:      health,
-			DiskCache:   disk,
 			Memory:      memory,
 			GovAPI:      gov,
 			Timers:      timers,
@@ -170,147 +132,6 @@ func statsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode stats response", http.StatusInternalServerError)
 		return
 	}
-}
-
-func collectDiskCacheStats(now time.Time) diskCacheInfo {
-	entries, err := os.ReadDir("json")
-	if err != nil {
-		return diskCacheInfo{}
-	}
-
-	oldestTime := now
-	newestTime := time.Time{}
-	oldestName := ""
-	newestName := ""
-	count := 0
-	stationsCount := 0
-	pricesCount := 0
-	oldestStationsTime := now
-	newestStationsTime := time.Time{}
-	oldestStationsName := ""
-	newestStationsName := ""
-	oldestPricesTime := now
-	newestPricesTime := time.Time{}
-	oldestPricesName := ""
-	newestPricesName := ""
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			continue
-		}
-
-		mod := info.ModTime()
-		if count == 0 || mod.Before(oldestTime) {
-			oldestTime = mod
-			oldestName = entry.Name()
-		}
-		if count == 0 || mod.After(newestTime) {
-			newestTime = mod
-			newestName = entry.Name()
-		}
-
-		switch {
-		case strings.HasPrefix(entry.Name(), "stations_"):
-			stationsCount++
-			if stationsCount == 1 || mod.Before(oldestStationsTime) {
-				oldestStationsTime = mod
-				oldestStationsName = entry.Name()
-			}
-			if stationsCount == 1 || mod.After(newestStationsTime) {
-				newestStationsTime = mod
-				newestStationsName = entry.Name()
-			}
-		case strings.HasPrefix(entry.Name(), "prices_"):
-			pricesCount++
-			if pricesCount == 1 || mod.Before(oldestPricesTime) {
-				oldestPricesTime = mod
-				oldestPricesName = entry.Name()
-			}
-			if pricesCount == 1 || mod.After(newestPricesTime) {
-				newestPricesTime = mod
-				newestPricesName = entry.Name()
-			}
-		}
-
-		count++
-	}
-
-	if count == 0 {
-		return diskCacheInfo{}
-	}
-
-	oldestAge := now.Sub(oldestTime)
-	if oldestAge < 0 {
-		oldestAge = 0
-	}
-	newestAge := now.Sub(newestTime)
-	if newestAge < 0 {
-		newestAge = 0
-	}
-
-	oldestStationsAge, newestStationsAge := categorizedFileAges(now, oldestStationsTime, newestStationsTime, stationsCount)
-	oldestPricesAge, newestPricesAge := categorizedFileAges(now, oldestPricesTime, newestPricesTime, pricesCount)
-
-	return diskCacheInfo{
-		JSONFileCount:                count,
-		StationsJSONFileCount:        stationsCount,
-		PricesJSONFileCount:          pricesCount,
-		OldestStationsFileName:       filepath.Base(oldestStationsName),
-		OldestStationsFileModifiedAt: formatStatsTime(oldestStationsTime, stationsCount),
-		OldestStationsFileAgeSeconds: int64(oldestStationsAge.Seconds()),
-		OldestStationsFileAgeHuman:   oldestStationsAge.Round(time.Second).String(),
-		NewestStationsFileName:       filepath.Base(newestStationsName),
-		NewestStationsFileModifiedAt: formatStatsTime(newestStationsTime, stationsCount),
-		NewestStationsFileAgeSeconds: int64(newestStationsAge.Seconds()),
-		NewestStationsFileAgeHuman:   newestStationsAge.Round(time.Second).String(),
-		OldestPricesFileName:         filepath.Base(oldestPricesName),
-		OldestPricesFileModifiedAt:   formatStatsTime(oldestPricesTime, pricesCount),
-		OldestPricesFileAgeSeconds:   int64(oldestPricesAge.Seconds()),
-		OldestPricesFileAgeHuman:     oldestPricesAge.Round(time.Second).String(),
-		NewestPricesFileName:         filepath.Base(newestPricesName),
-		NewestPricesFileModifiedAt:   formatStatsTime(newestPricesTime, pricesCount),
-		NewestPricesFileAgeSeconds:   int64(newestPricesAge.Seconds()),
-		NewestPricesFileAgeHuman:     newestPricesAge.Round(time.Second).String(),
-		OldestFileName:               filepath.Base(oldestName),
-		OldestFileModifiedAt:         oldestTime.UTC().Format(time.RFC3339),
-		OldestFileAgeSeconds:         int64(oldestAge.Seconds()),
-		OldestFileAgeHuman:           oldestAge.Round(time.Second).String(),
-		NewestFileName:               filepath.Base(newestName),
-		NewestFileModifiedAt:         newestTime.UTC().Format(time.RFC3339),
-		NewestFileAgeSeconds:         int64(newestAge.Seconds()),
-		NewestFileAgeHuman:           newestAge.Round(time.Second).String(),
-	}
-}
-
-func categorizedFileAges(now, oldest, newest time.Time, count int) (time.Duration, time.Duration) {
-	if count == 0 {
-		return 0, 0
-	}
-
-	oldestAge := now.Sub(oldest)
-	if oldestAge < 0 {
-		oldestAge = 0
-	}
-
-	newestAge := now.Sub(newest)
-	if newestAge < 0 {
-		newestAge = 0
-	}
-
-	return oldestAge, newestAge
-}
-
-func formatStatsTime(modifiedAt time.Time, count int) string {
-	if count == 0 || modifiedAt.IsZero() {
-		return ""
-	}
-
-	return modifiedAt.UTC().Format(time.RFC3339)
 }
 
 func collectMemoryStats(now time.Time) memoryInfo {
@@ -537,19 +358,8 @@ func formatCyclesHuman(cycles uint32) string {
 	return fmt.Sprintf("%d cycles", cycles)
 }
 
-func evaluateStatsHealth(disk diskCacheInfo, memory memoryInfo, gov govAPIInfo) healthInfo {
+func evaluateStatsHealth(memory memoryInfo, gov govAPIInfo) healthInfo {
 	reasons := make([]string, 0, 5)
-
-	if disk.JSONFileCount == 0 {
-		reasons = append(reasons, "no_json_cache_files_found")
-	} else {
-		if disk.StationsJSONFileCount > 0 && time.Duration(disk.OldestStationsFileAgeSeconds)*time.Second > statsWarnOldestStationsJSONFileAge {
-			reasons = append(reasons, "oldest_stations_json_file_is_stale")
-		}
-		if disk.PricesJSONFileCount > 0 && time.Duration(disk.OldestPricesFileAgeSeconds)*time.Second > statsWarnOldestPricesJSONFileAge {
-			reasons = append(reasons, "oldest_prices_json_file_is_stale")
-		}
-	}
 
 	if memory.CachedStationPagesCount+memory.CachedPricePagesCount == 0 {
 		reasons = append(reasons, "no_cached_pages_in_memory")

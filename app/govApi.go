@@ -517,14 +517,6 @@ func fetchStationsPage(ctx context.Context, client *OAuthClient, pageNum int, ra
 			body, _ = io.ReadAll(io.LimitReader(resp.Body, 2048))
 		}
 		resp.Body.Close()
-		if resp.StatusCode == http.StatusInternalServerError {
-			filePath, saveErr := saveHTTP500Response(body, pageNum, RequestTypeStationsPage, apiURL, resp.StatusCode)
-			if saveErr != nil {
-				log.Printf("[STATIONS] Failed to write HTTP 500 response dump for page %d: %v", pageNum, saveErr)
-			} else {
-				log.Printf("[STATIONS] Wrote HTTP 500 response dump for page %d to %s", pageNum, filepath.Base(filePath))
-			}
-		}
 		if isMaintenancePage(body) {
 			log.Printf("[STATIONS] API appears to be under maintenance (status %d, page %d)", resp.StatusCode, pageNum)
 			return pageFetchSkipPage
@@ -616,14 +608,6 @@ func fetchPricesPage(ctx context.Context, client *OAuthClient, pageNum int, rate
 			body, _ = io.ReadAll(io.LimitReader(resp.Body, 2048))
 		}
 		resp.Body.Close()
-		if resp.StatusCode == http.StatusInternalServerError {
-			filePath, saveErr := saveHTTP500Response(body, pageNum, RequestTypePricesPage, apiURL, resp.StatusCode)
-			if saveErr != nil {
-				log.Printf("[PRICES] Failed to write HTTP 500 response dump for page %d: %v", pageNum, saveErr)
-			} else {
-				log.Printf("[PRICES] Wrote HTTP 500 response dump for page %d to %s", pageNum, filepath.Base(filePath))
-			}
-		}
 		if isMaintenancePage(body) {
 			log.Printf("[PRICES] API appears to be under maintenance (status %d, page %d)", resp.StatusCode, pageNum)
 			return pageFetchSkipPage
