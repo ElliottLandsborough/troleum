@@ -26,26 +26,28 @@ type PricePageCache struct {
 	PriceStations []PriceStation
 }
 
-// How many petrol stations are there in the uk vs how many are on the system?
-// Google says 8,000 stations in uk, i've set this to 100,000 to be safe
-var stations = make([]Station, 0, 100000)
-var stationsIndex = make(map[string]int, 100000)
+const (
+	initialStationCapacity = 12000
+	initialPageCacheCap    = 64
+)
+
+// Keep startup capacity close to expected live data to avoid oversized backing arrays.
+var stations = make([]Station, 0, initialStationCapacity)
+var stationsIndex = make(map[string]int, initialStationCapacity)
 var stationsMutex sync.Mutex
 
-// Stations and price listings are 1:1 so we should have no more then 8,000 (on dev?)
-// Set the same extremely high size in case there are more on prod.
-var priceStations = make([]PriceStation, 0, 100000)
-var priceStationsIndex = make(map[string]int, 100000)
+// Stations and price listings are roughly 1:1.
+var priceStations = make([]PriceStation, 0, initialStationCapacity)
+var priceStationsIndex = make(map[string]int, initialStationCapacity)
 var priceStationsMutex sync.Mutex
 
 // 1:1 with stations. This is what we will use to search for nearby stations
-var stationLocations = make(map[string]LatLon, 100000)
+var stationLocations = make(map[string]LatLon, initialStationCapacity)
 var stationLocationsMutex sync.Mutex
 
 // Map of indexed json files already saved with their page numbers and datestamps
-// I have set a size of 1000, i think there are less than 20 pages on dev, not sure about prod.
-var savedStationsPages = make(map[int]StationPageCache, 1000)
-var savedPricesPages = make(map[int]PricePageCache, 1000)
+var savedStationsPages = make(map[int]StationPageCache, initialPageCacheCap)
+var savedPricesPages = make(map[int]PricePageCache, initialPageCacheCap)
 var savedStationsPagesMutex sync.Mutex
 var savedPricesPagesMutex sync.Mutex
 
@@ -401,8 +403,8 @@ func removeStationsNotInSet(nodeIdSet map[string]struct{}) {
 		return
 	}
 
-	newStations := make([]Station, 0, 100000)
-	newStationsIndex := make(map[string]int, 100000)
+	newStations := make([]Station, 0, len(stations))
+	newStationsIndex := make(map[string]int, len(stations))
 
 	log.Printf("[CLEANUP] Current station count before removal: %d", len(stations))
 	for _, station := range stations {
@@ -426,8 +428,8 @@ func removePriceStationsNotInSet(nodeIdSet map[string]struct{}) {
 		return
 	}
 
-	newPriceStations := make([]PriceStation, 0, 100000)
-	newPriceStationsIndex := make(map[string]int, 100000)
+	newPriceStations := make([]PriceStation, 0, len(priceStations))
+	newPriceStationsIndex := make(map[string]int, len(priceStations))
 
 	log.Printf("[CLEANUP] Current price station count before removal: %d", len(priceStations))
 	for _, priceStation := range priceStations {
@@ -452,7 +454,7 @@ func removeStationLocationsNotInSet(nodeIdSet map[string]struct{}) {
 	}
 
 	log.Printf("[CLEANUP] Current station locations count before removal: %d", len(stationLocations))
-	newStationLocations := make(map[string]LatLon, 100000)
+	newStationLocations := make(map[string]LatLon, len(stationLocations))
 	for nodeId, location := range stationLocations {
 		if _, exists := nodeIdSet[nodeId]; exists {
 			newStationLocations[nodeId] = location
