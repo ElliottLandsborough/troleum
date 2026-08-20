@@ -2,7 +2,7 @@
 #FROM golang:1.26 AS builder
 
 # Produce a smaller image for production
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # Create app directory
 WORKDIR /app
