@@ -28,7 +28,7 @@ COPY app/webHandlers.go /app/
 COPY app/webServer.go /app/
 
 # Build the binary (with debug optimizations)
-#RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o main .
+#RUN go build -x -v -gcflags=all=-d=checkptr=1 -race -tags debug -o troleum-go .
 
 # Build the binary with production optimizations
 ARG TARGETOS=linux
@@ -41,7 +41,7 @@ RUN set -eux; \
     if [ "${GOARCH}" = "amd64" ]; then \
         export GOAMD64="${GOAMD64}"; \
     fi; \
-    go build -ldflags="-s -w" -trimpath -o main .
+    go build -ldflags="-s -w" -trimpath -o troleum-go .
 
 # Prepare runtime assets and stamped static files.
 FROM alpine:3 AS runtime-prep
@@ -50,7 +50,7 @@ ARG ASSET_VERSION=dev
 WORKDIR /app
 
 # Copy binary and data files into a prepared filesystem tree.
-COPY --from=builder /app/main /app/main
+COPY --from=builder /app/troleum-go /app/troleum-go
 
 # Copy OSM-derived UK boundary data used for coordinate correction
 COPY app/uk_land_osm.json ./uk_land_osm.json
@@ -72,7 +72,7 @@ COPY static ./static
 RUN set -eux; \
     sed -i "s/__ASSET_VERSION__/${ASSET_VERSION}/g" /app/static/index.html; \
     mkdir -p /app/json; \
-    chmod 555 /app/main; \
+    chmod 555 /app/troleum-go; \
     chmod 444 /app/uk_land_osm.json; \
     find /app/assets -type d -exec chmod 555 {} \;; \
     find /app/assets -type f -exec chmod 444 {} \;; \
@@ -88,4 +88,4 @@ WORKDIR /app
 COPY --from=runtime-prep /app /app
 
 EXPOSE 8080
-ENTRYPOINT ["/app/main"]
+ENTRYPOINT ["/app/troleum-go"]
