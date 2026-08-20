@@ -18,18 +18,18 @@ const pricesMaxConsecutiveSkippedPages = 3
 
 // FuelPrice returned as nested struct within PriceStation, which is returned by the prices endpoint
 type FuelPrice struct {
-	FuelType         string    `json:"fuel_type"`
-	Price            float64   `json:"price"`
-	PriceLastUpdated time.Time `json:"price_last_updated"`
+	FuelType string  `json:"fuel_type"`
+	Price    float64 `json:"price"`
+	// PriceLastUpdated time.Time `json:"price_last_updated"`
 }
 
 // PriceStation struct returned by the prices endpoint, containing station details and a list of fuel prices
 type PriceStation struct {
-	NodeID              string      `json:"node_id"`
-	MftOrganisationName string      `json:"mft_organisation_name"`
-	PublicPhoneNumber   string      `json:"public_phone_number"`
-	TradingName         string      `json:"trading_name"`
-	FuelPrices          []FuelPrice `json:"fuel_prices"`
+	NodeID string `json:"node_id"`
+	// MftOrganisationName string      `json:"mft_organisation_name"`
+	// PublicPhoneNumber   string      `json:"public_phone_number"`
+	// TradingName         string      `json:"trading_name"`
+	FuelPrices []FuelPrice `json:"fuel_prices"`
 }
 
 // normalizeFuelPriceValue converts values that appear to be in pounds (e.g. 1.55)

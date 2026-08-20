@@ -18,33 +18,33 @@ const stationsCycleCooldown = 6 * time.Hour
 const stationsMaxConsecutiveSkippedPages = 3
 
 type Station struct {
-	NodeID                      string       `json:"node_id"`
-	MftOrganisationName         string       `json:"mft_organisation_name"`
-	PublicPhoneNumber           string       `json:"public_phone_number"`
-	TradingName                 string       `json:"trading_name"`
-	IsSameTradingAndBrandName   bool         `json:"is_same_trading_and_brand_name"`
-	BrandName                   string       `json:"brand_name"`
-	TemporaryClosure            bool         `json:"temporary_closure"`
-	PermanentClosure            *bool        `json:"permanent_closure"`
-	PermanentClosureDate        *string      `json:"permanent_closure_date"`
-	IsMotorwayServiceStation    bool         `json:"is_motorway_service_station"`
-	IsSupermarketServiceStation bool         `json:"is_supermarket_service_station"`
-	Location                    Location     `json:"location"`
-	Amenities                   []string     `json:"amenities"`
-	OpeningTimes                OpeningTimes `json:"opening_times"`
-	FuelTypes                   []string     `json:"fuel_types"`
-	Distance                    float64      `json:"distance,omitempty"` // Distance in miles from a given location, calculated on the fly
+	NodeID string `json:"node_id"`
+	// MftOrganisationName         string       `json:"mft_organisation_name"`
+	PublicPhoneNumber         string `json:"public_phone_number"`
+	TradingName               string `json:"trading_name"`
+	IsSameTradingAndBrandName bool   `json:"is_same_trading_and_brand_name"`
+	BrandName                 string `json:"brand_name"`
+	// TemporaryClosure            bool         `json:"temporary_closure"`
+	// PermanentClosure            *bool        `json:"permanent_closure"`
+	// PermanentClosureDate        *string      `json:"permanent_closure_date"`
+	// IsMotorwayServiceStation    bool         `json:"is_motorway_service_station"`
+	// IsSupermarketServiceStation bool         `json:"is_supermarket_service_station"`
+	Location Location `json:"location"`
+	// Amenities                   []string     `json:"amenities"`
+	// OpeningTimes                OpeningTimes `json:"opening_times"`
+	FuelTypes []string `json:"fuel_types"`
+	Distance  float64  `json:"distance,omitempty"` // Distance in miles from a given location, calculated on the fly
 }
 
 type Location struct {
-	AddressLine1 string    `json:"address_line_1"`
-	AddressLine2 string    `json:"address_line_2"`
-	City         string    `json:"city"`
-	Country      string    `json:"country"`
-	County       string    `json:"county"`
-	Postcode     string    `json:"postcode"`
-	Latitude     FlexFloat `json:"latitude"`
-	Longitude    FlexFloat `json:"longitude"`
+	AddressLine1 string `json:"address_line_1"`
+	AddressLine2 string `json:"address_line_2"`
+	City         string `json:"city"`
+	// Country      string    `json:"country"`
+	County    string    `json:"county"`
+	Postcode  string    `json:"postcode"`
+	Latitude  FlexFloat `json:"latitude"`
+	Longitude FlexFloat `json:"longitude"`
 }
 
 type OpeningTimes struct {
