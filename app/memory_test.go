@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -103,11 +102,11 @@ func resetGlobalMemoryStateForTest() {
 	stationLocationsMutex.Unlock()
 
 	savedStationsPagesMutex.Lock()
-	savedStationsPages = make(map[int]ResponseCache, 1000)
+	savedStationsPages = make(map[int]StationPageCache, 1000)
 	savedStationsPagesMutex.Unlock()
 
 	savedPricesPagesMutex.Lock()
-	savedPricesPages = make(map[int]ResponseCache, 1000)
+	savedPricesPages = make(map[int]PricePageCache, 1000)
 	savedPricesPagesMutex.Unlock()
 
 	fuelTypesCacheMutex.Lock()
@@ -260,13 +259,8 @@ func TestLoadDataFromAllCachedPageResponses(t *testing.T) {
 	stationsIndex = map[string]int{"stale": 0}
 	stationsMutex.Unlock()
 
-	savedStationsPagesMutex.Lock()
-	savedStationsPages[1] = ResponseCache{CreatedAt: time.Now(), Data: json.RawMessage(testStationPageJSON)}
-	savedStationsPagesMutex.Unlock()
-
-	savedPricesPagesMutex.Lock()
-	savedPricesPages[1] = ResponseCache{CreatedAt: time.Now(), Data: json.RawMessage(testPricePageJSON)}
-	savedPricesPagesMutex.Unlock()
+	StoreJSONPageInMemory(1, testStationPageJSON, RequestTypeStationsPage, strings.Count(testStationPageJSON, "node_id"))
+	StoreJSONPageInMemory(1, testPricePageJSON, RequestTypePricesPage, strings.Count(testPricePageJSON, "node_id"))
 
 	loadDataFromAllCachedPageResponses()
 

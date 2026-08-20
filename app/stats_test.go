@@ -76,11 +76,11 @@ func TestCollectMemoryStats(t *testing.T) {
 	fuelTypesCacheMutex.Unlock()
 
 	savedStationsPagesMutex.Lock()
-	savedStationsPages[1] = ResponseCache{CreatedAt: now.Add(-30 * time.Minute)}
+	savedStationsPages[1] = StationPageCache{ResponseCache: ResponseCache{CreatedAt: now.Add(-30 * time.Minute)}}
 	savedStationsPagesMutex.Unlock()
 
 	savedPricesPagesMutex.Lock()
-	savedPricesPages[1] = ResponseCache{CreatedAt: now.Add(-10 * time.Minute)}
+	savedPricesPages[1] = PricePageCache{ResponseCache: ResponseCache{CreatedAt: now.Add(-10 * time.Minute)}}
 	savedPricesPagesMutex.Unlock()
 
 	stats := collectMemoryStats(now)

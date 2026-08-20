@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -14,8 +13,17 @@ type LatLon struct {
 }
 
 type ResponseCache struct {
-	CreatedAt time.Time       // timestamp
-	Data      json.RawMessage // unlimited JSON string
+	CreatedAt time.Time // timestamp
+}
+
+type StationPageCache struct {
+	ResponseCache
+	Stations []Station
+}
+
+type PricePageCache struct {
+	ResponseCache
+	PriceStations []PriceStation
 }
 
 // How many petrol stations are there in the uk vs how many are on the system?
@@ -36,8 +44,8 @@ var stationLocationsMutex sync.Mutex
 
 // Map of indexed json files already saved with their page numbers and datestamps
 // I have set a size of 1000, i think there are less than 20 pages on dev, not sure about prod.
-var savedStationsPages = make(map[int]ResponseCache, 1000)
-var savedPricesPages = make(map[int]ResponseCache, 1000)
+var savedStationsPages = make(map[int]StationPageCache, 1000)
+var savedPricesPages = make(map[int]PricePageCache, 1000)
 var savedStationsPagesMutex sync.Mutex
 var savedPricesPagesMutex sync.Mutex
 
@@ -129,35 +137,64 @@ func StoreJSONPageInMemory(pageNum int, jsonString string, requestType RequestTy
 		return
 	}
 
-	cache := ResponseCache{
-		Data:      json.RawMessage(jsonString),
-		CreatedAt: time.Now(),
-	}
+	cacheMeta := ResponseCache{CreatedAt: time.Now()}
 
 	switch requestType {
 	case RequestTypeStationsPage:
+		stationList, err := processJSONArray[Station]([]byte(jsonString), pageNum, RequestTypeStationsPage)
+		if err != nil {
+			log.Printf("[ENRICH] Error processing cached station data for page %d: %v", pageNum, err)
+			return
+		}
+
+		sanitizedStations, fixedCoordsCount, droppedCoordsCount := sanitizeStationsForUKMapView(stationList)
+		if fixedCoordsCount > 0 || droppedCoordsCount > 0 {
+			log.Printf("[ENRICH] Page %d station coordinate normalization: fixed=%d dropped=%d", pageNum, fixedCoordsCount, droppedCoordsCount)
+		}
+
 		savedStationsPagesMutex.Lock()
-		savedStationsPages[pageNum] = cache
+		savedStationsPages[pageNum] = StationPageCache{
+			ResponseCache: cacheMeta,
+			Stations:      sanitizedStations,
+		}
 		if nodeIdCount < NodeIDCountThreshold {
 			log.Printf("[CACHE] WARNING: Page %d of type %s has a low node_id count of %d", pageNum, requestType, nodeIdCount)
 		}
 
 		savedStationsPagesMutex.Unlock()
+
+		mergeEntities(sanitizedStations, &stations, stationsIndex, &stationsMutex)
+		mergeStationLocations(sanitizedStations)
 	case RequestTypePricesPage:
+		priceStationsList, err := processJSONArray[PriceStation]([]byte(jsonString), pageNum, RequestTypePricesPage)
+		if err != nil {
+			log.Printf("[ENRICH] Error processing cached price data for page %d: %v", pageNum, err)
+			return
+		}
+
+		// Some upstream records occasionally arrive in pounds (e.g. 1.55)
+		// while most are in pence (e.g. 155.0). Normalize before merging.
+		normalizedCount := normalizePriceStationsFuelPrices(priceStationsList)
+		if normalizedCount > 0 {
+			log.Printf("[ENRICH] Page %d: normalized %d price value(s) before merge", pageNum, normalizedCount)
+		}
+
 		savedPricesPagesMutex.Lock()
-		savedPricesPages[pageNum] = cache
+		savedPricesPages[pageNum] = PricePageCache{
+			ResponseCache: cacheMeta,
+			PriceStations: priceStationsList,
+		}
 		if nodeIdCount < NodeIDCountThreshold {
 			log.Printf("[CACHE] WARNING: Page %d of type %s has a low node_id count of %d", pageNum, requestType, nodeIdCount)
 		}
 		savedPricesPagesMutex.Unlock()
-	}
 
-	// After storing the page in memory, we can trigger the enrichment process immediately
-	loadDataFromSingleCachedPageResponse(pageNum, requestType)
+		mergePriceStations(priceStationsList)
+	}
 }
 
 // This function will take a global slice, a mutex, and an integer
-func ClearCachedPageDataAbovePageNum(responseCache map[int]ResponseCache, requestType RequestType, pageNum int) {
+func ClearCachedPageDataAbovePageNum[T any](responseCache map[int]T, requestType RequestType, pageNum int) {
 	log.Printf("[CACHE] Clearing cached page data above page %d of type %s", pageNum, requestType)
 	for key := range responseCache {
 		if key > pageNum {
@@ -187,60 +224,39 @@ func clearCachedPagesAfterTerminalPage(lastValidPage int, requestType RequestTyp
 }
 
 func loadDataFromSingleCachedPageResponse(pageNum int, requestType RequestType) {
-	var cache ResponseCache
-	var exists bool
-
 	switch requestType {
 	case RequestTypeStationsPage:
+		var cache StationPageCache
+		var exists bool
 		savedStationsPagesMutex.Lock()
 		cache, exists = savedStationsPages[pageNum]
 		savedStationsPagesMutex.Unlock()
+
+		if !exists {
+			log.Printf("[ENRICH] No cached data found in memory for page %d of type %s", pageNum, requestType)
+			return
+		}
+
+		log.Printf("[ENRICH] Loading data from cached response for page %d of type %s", pageNum, requestType)
+		mergeEntities(cache.Stations, &stations, stationsIndex, &stationsMutex)
+		mergeStationLocations(cache.Stations)
 	case RequestTypePricesPage:
+		var cache PricePageCache
+		var exists bool
 		savedPricesPagesMutex.Lock()
 		cache, exists = savedPricesPages[pageNum]
 		savedPricesPagesMutex.Unlock()
+
+		if !exists {
+			log.Printf("[ENRICH] No cached data found in memory for page %d of type %s", pageNum, requestType)
+			return
+		}
+
+		log.Printf("[ENRICH] Loading data from cached response for page %d of type %s", pageNum, requestType)
+		mergePriceStations(cache.PriceStations)
 	default:
 		log.Printf("[ENRICH] Invalid request type %s for loading cached page data", requestType)
 		return
-	}
-
-	if !exists {
-		log.Printf("[ENRICH] No cached data found in memory for page %d of type %s", pageNum, requestType)
-		return
-	}
-
-	log.Printf("[ENRICH] Loading data from cached response for page %d of type %s", pageNum, requestType)
-
-	switch requestType {
-	case RequestTypeStationsPage:
-		stationList, err := processJSONArray[Station](cache.Data, pageNum, RequestTypeStationsPage)
-		if err != nil {
-			log.Printf("[ENRICH] Error processing cached station data for page %d: %v", pageNum, err)
-			return
-		}
-
-		sanitizedStations, fixedCoordsCount, droppedCoordsCount := sanitizeStationsForUKMapView(stationList)
-		if fixedCoordsCount > 0 || droppedCoordsCount > 0 {
-			log.Printf("[ENRICH] Page %d station coordinate normalization: fixed=%d dropped=%d", pageNum, fixedCoordsCount, droppedCoordsCount)
-		}
-
-		mergeEntities(sanitizedStations, &stations, stationsIndex, &stationsMutex)
-		mergeStationLocations(sanitizedStations)
-	case RequestTypePricesPage:
-		priceStationsList, err := processJSONArray[PriceStation](cache.Data, pageNum, RequestTypePricesPage)
-		if err != nil {
-			log.Printf("[ENRICH] Error processing cached price data for page %d: %v", pageNum, err)
-			return
-		}
-
-		// Some upstream records occasionally arrive in pounds (e.g. 1.55)
-		// while most are in pence (e.g. 155.0). Normalize before merging.
-		normalizedCount := normalizePriceStationsFuelPrices(priceStationsList)
-		if normalizedCount > 0 {
-			log.Printf("[ENRICH] Page %d: normalized %d price value(s) before merge", pageNum, normalizedCount)
-		}
-
-		mergePriceStations(priceStationsList)
 	}
 }
 
@@ -286,20 +302,15 @@ func removeMissingStations() {
 
 	// Snapshot the station pages while locked to avoid race conditions.
 	savedStationsPagesMutex.Lock()
-	stationPagesCopy := make(map[int]ResponseCache, len(savedStationsPages))
+	stationPagesCopy := make(map[int]StationPageCache, len(savedStationsPages))
 	for pageNum, cache := range savedStationsPages {
 		stationPagesCopy[pageNum] = cache
 	}
 	savedStationsPagesMutex.Unlock()
 
 	// Process snapshot outside the lock
-	for pageNum, cache := range stationPagesCopy {
-		stationList, err := processJSONArray[Station](cache.Data, pageNum, RequestTypeStationsPage)
-		if err != nil {
-			log.Printf("[ENRICH] Error processing cached station data for page %d during index reset: %v", pageNum, err)
-			continue
-		}
-		for _, station := range stationList {
+	for _, cache := range stationPagesCopy {
+		for _, station := range cache.Stations {
 			nodeIds = append(nodeIds, station.NodeID)
 		}
 	}
