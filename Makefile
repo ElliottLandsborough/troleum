@@ -8,7 +8,7 @@ LOCAL_TMPFS ?= /tmp:rw,noexec,nosuid,nodev,size=64m
 
 REMOTE_IMAGE_NAME ?= troleum-app:runtime
 REMOTE_IMAGE_TAR ?= troleum_runtime.tar
-REMOTE_HOST ?= golf2deploy
+REMOTE_HOST ?= golf3deploy
 REMOTE_SSH_USER ?= deploy
 REMOTE_CONN ?= $(REMOTE_SSH_USER)@$(REMOTE_HOST)
 REMOTE_PLATFORM ?= linux/amd64
