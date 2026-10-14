@@ -31,8 +31,8 @@ jobs:
         run: go test ./app -count=1 -covermode=atomic -coverprofile=coverage.out
 
       - name: Upload coverage reports to Codecov
-        # git ls-remote https://github.com/codecov/codecov-action refs/tags/v7
-        uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f
+        # git ls-remote https://github.com/codecov/codecov-action refs/tags/v7.1.1
+        uses: codecov/codecov-action@2320916714171c258d01dbd81040d64d798c6f8e
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.out
@@ -44,8 +44,8 @@ jobs:
           apt-get install -y xz-utils
 
       - name: Upload coverage reports to qlty
-        # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2
-        uses: qltysh/qlty-action/coverage@08a0a862c159eae9b9003081da6663d96efef637
+        # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2.4.0
+        uses: qltysh/qlty-action/coverage@c9b09987143d1e4ac955f4803c7bea742102feb5
         with:
           token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
           files: ./coverage.out
