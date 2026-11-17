@@ -6,6 +6,8 @@
 
 Troleum is a UK fuel price comparison website that shows petrol station locations, current fuel prices, and distance-based results on an interactive map.
 
+[Buy me a coffee](https://buymeacoffee.com/elliottlan)
+
 Live site: https://troleum.org
 
 The application pulls station and price data from the UK government Fuel Finder service, stores cached page responses locally, and serves a lightweight frontend for browsing nearby stations by map view, distance, and fuel type.
