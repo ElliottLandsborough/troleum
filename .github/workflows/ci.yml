@@ -44,8 +44,8 @@ jobs:
           apt-get install -y xz-utils
 
       - name: Upload coverage reports to qlty
-        # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2.4.0
-        uses: qltysh/qlty-action/coverage@c9b09987143d1e4ac955f4803c7bea742102feb5
+        # git ls-remote https://github.com/qltysh/qlty-action refs/tags/v2.7.0
+        uses: qltysh/qlty-action/coverage@10ccbe4bf74e9f71f24c9266a87f34265011ac1f
         with:
           token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
           files: ./coverage.out
